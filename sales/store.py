@@ -13,6 +13,8 @@ from typing import Optional
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import dbcompat
+
 from .db import connect, init_db
 
 # 新帳本的範例清單（讓使用者一進來就有東西可玩）。
@@ -60,7 +62,7 @@ def create_user(email: str, password: str) -> Optional[int]:
             "INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)",
             (email, generate_password_hash(password), _now()),
         )
-        user_id = cur.lastrowid
+        user_id = dbcompat.lastid(conn, cur)
         ws_id = _create_workspace(conn, user_id, "我的帳本", seed=True)
         conn.execute("UPDATE users SET active_workspace_id = ? WHERE id = ?", (ws_id, user_id))
         conn.commit()
@@ -103,7 +105,7 @@ def _create_workspace(conn, user_id: int, name: str, seed: bool = False) -> int:
         "INSERT INTO workspaces (name, invite_code, created_at) VALUES (?, ?, ?)",
         (name, _new_invite(), _now()),
     )
-    ws_id = cur.lastrowid
+    ws_id = dbcompat.lastid(conn, cur)
     conn.execute(
         "INSERT INTO memberships (workspace_id, user_id, role, created_at) VALUES (?, ?, 'owner', ?)",
         (ws_id, user_id, _now()),

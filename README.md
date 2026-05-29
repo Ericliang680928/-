@@ -90,17 +90,26 @@ python app.py
 
 系統已內建**多帳號登入**，可以安全地多人共用（每人資料隔離）。上線方式：
 
-### Render（最簡單，附設定檔）
+### Render（免費方案可跑，附設定檔）
 
 本專案已附 `render.yaml`，到 [render.com](https://render.com) → New → **Blueprint** → 連這個 repo，
-它會自動：用 `gunicorn` 啟動、產生安全的 `SECRET_KEY`、掛一顆持久磁碟到 `/data`
-並把資料庫指向 `/data/app.db`（重新部署資料不流失）。完成後就有一個公開網址。
+它會一次建立 **sales-invoice** 與 **stocktake** 兩個服務、用 `gunicorn` 啟動、自動產生 `SECRET_KEY`。
+
+資料永久保存改用**外部 Postgres**（免費方案沒有持久磁碟）：
+1. 到 [neon.tech](https://neon.tech) 建一個免費專案。
+2. 兩個 App 都有 `users`/`products` 同名表，**不能共用同一個資料庫**。在 Neon SQL 編輯器執行
+   `CREATE DATABASE sales;` 與 `CREATE DATABASE stocktake;`。
+3. 取得兩條連線字串（只差結尾資料庫名），到 Render 各服務的 Environment 貼上 `DATABASE_URL`
+   （sales-invoice 用 `.../sales`、stocktake 用 `.../stocktake`）。建議用 Neon 的 **pooled** 連線字串。
+
+> 未設 `DATABASE_URL` 時會退回 SQLite；但 Render 免費方案沒有持久磁碟，重啟即清空，僅適合臨時展示。
+> 本機開發/測試一律用 SQLite，零設定。
 
 ### Railway / Fly.io 等
 
 附了 `Procfile`（`web: gunicorn app:app ...`），多數平台會自動辨識。記得：
 - 設環境變數 `SECRET_KEY`（隨機長字串）、`COOKIE_SECURE=1`（https）。
-- 把 `SALES_DB` 指向一個**持久磁碟**路徑，否則重啟會清空資料。
+- 設 `DATABASE_URL` 指向外部 Postgres；或把 `SALES_DB` 指向**持久磁碟**路徑，否則重啟會清空資料。
 
 ### 其他
 
@@ -121,10 +130,11 @@ python tests/test_parser.py        # 或 python -m pytest -q
 
 ```
 app.py                 Flask 後端、登入與 API
+dbcompat.py            SQLite ↔ Postgres 相容層（兩個 App 共用）
 Procfile / render.yaml 部署設定（gunicorn / Render）
 sales/
-  db.py                SQLite 連線與資料表結構
-  store.py             帳號、清單、銷貨紀錄（依 user_id 隔離）
+  db.py                資料表結構與連線（透過 dbcompat）
+  store.py             帳號、清單、銷貨紀錄（依 workspace 帳本隔離）
   matcher.py           中文模糊比對
   parser.py            離線規則解析（日期/數量/產品配對）
   llm.py               選配的 Claude 解析補強（含 prompt caching）
@@ -141,7 +151,7 @@ tests/                 測試
 
 # 📦 庫存盤點系統（第二個 App）
 
-以 **Google Sheet 為產品來源**、**程式 SQLite 為唯一正本**、再**同步寫回專屬 Google Sheet** 的庫存盤點系統。手機優先、支援多人同時盤點。
+以 **Google Sheet 為產品來源**、**程式資料庫為唯一正本**（本機 SQLite / 雲端 Postgres）、再**同步寫回專屬 Google Sheet** 的庫存盤點系統。手機優先、支援多人同時盤點。
 
 啟動：`python run_stocktake.py` → http://127.0.0.1:5001 （第一次請先「註冊」建立管理員）。
 部署：`gunicorn run_stocktake:app`。
@@ -176,12 +186,20 @@ tests/                 測試
    export SOURCE_SHEET_ID=1JOpCUfAS3YEHHGUq_NR8twxGzDh7C0_p7bZAdOc0tf0
    export DEDICATED_SHEET_ID=1-t5dPhduceaVwVk3vtoestXPOKR6_yk9xHKCtiS-Ipc
    export SECRET_KEY=$(python -c "import secrets;print(secrets.token_hex(32))")
-   pip install -r requirements.txt   # 含 gspread、google-auth
+   export DATABASE_URL=postgresql://...   # 雲端正式環境用 Postgres（見下節）；本機可省略改用 SQLite
+   pip install -r requirements.txt   # 含 gspread、google-auth、psycopg2-binary
    gunicorn run_stocktake:app
    ```
 5. 進「同步」頁，先「⬇️ 從來源匯入產品」，再「⬆️ 寫回專屬 Sheet」（會自動補齊 5 個工作表）。
 
 > 安全：服務帳號金鑰**切勿**進版控（`.gitignore` 已排除 `*service-account*.json`）。
+
+## 資料庫：本機 SQLite、雲端 Postgres
+
+* **本機 / 測試**：不設 `DATABASE_URL` 就用 SQLite（預設 `data/stocktake.db`，零設定）。
+* **雲端永久保存**：設 `DATABASE_URL`（如 [Neon](https://neon.tech) 免費 Postgres）即自動切換。免費 PaaS 多半沒有持久磁碟，用外部 Postgres 才能跨重啟保存資料，也更適合多人同時盤點。
+* 兩個 App 有同名資料表，**各需自己的資料庫**：`CREATE DATABASE sales;` 與 `CREATE DATABASE stocktake;`，各服務 `DATABASE_URL` 指向自己的庫。
+* 一鍵部署見最上方「Render（免費方案可跑）」一節，`render.yaml` 已含兩個服務的設定。
 
 ## 結構
 

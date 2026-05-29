@@ -14,6 +14,8 @@ from typing import Optional
 
 from werkzeug.security import check_password_hash, generate_password_hash
 
+import dbcompat
+
 from .db import connect, init_db
 
 ROLES = ("admin", "counter", "reviewer")
@@ -48,7 +50,7 @@ def create_user(email: str, password: str, name: str, role: str) -> Optional[int
             (email, generate_password_hash(password), name or email, role, _now()),
         )
         conn.commit()
-        return cur.lastrowid
+        return dbcompat.lastid(conn, cur)
     finally:
         conn.close()
 
@@ -123,7 +125,8 @@ def import_products(rows: list[dict], source_updated_at: str = "") -> dict:
                     "INSERT INTO products (code,name,category,spec,active,source_updated_at,synced_at) VALUES (?,?,?,?,1,?,?)",
                     (code, name, cat, spec, source_updated_at, now))
                 conn.execute(
-                    "INSERT OR IGNORE INTO inventory (product_code,book_qty,last_count_date,last_moved_at) VALUES (?,0,'','')",
+                    "INSERT INTO inventory (product_code,book_qty,last_count_date,last_moved_at) "
+                    "VALUES (?,0,'','') ON CONFLICT DO NOTHING",
                     (code,))
                 added += 1
         # 來源已不存在的 → 停用（不刪，保留歷史）

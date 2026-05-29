@@ -1,6 +1,8 @@
 Flask>=3.0
 openpyxl>=3.1
 gunicorn>=21.0
+# 雲端部署用 Postgres（設了 DATABASE_URL 才會啟用；本機/測試用 SQLite，免安裝）
+psycopg2-binary>=2.9
 # 選配：口語銷貨單的 AI 解析補強
 anthropic>=0.40
 # 選配：庫存盤點系統的 Google Sheets 同步（用服務帳號）

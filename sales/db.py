@@ -14,7 +14,8 @@
 from __future__ import annotations
 
 import os
-import sqlite3
+
+import dbcompat
 
 DB_PATH = os.environ.get(
     "SALES_DB",
@@ -88,13 +89,8 @@ CREATE INDEX IF NOT EXISTS idx_mem_user ON memberships(user_id);
 """
 
 
-def connect() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=15)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
-    return conn
+def connect():
+    return dbcompat.connect(DB_PATH)
 
 
 def _has_table(conn, name: str) -> bool:
@@ -112,18 +108,21 @@ def init_db() -> None:
     conn = connect()
     try:
         conn.executescript(_CORE)
-        # 舊版 users 可能沒有 active_workspace_id 欄位。
-        if _has_table(conn, "users") and not _has_column(conn, "users", "active_workspace_id"):
-            conn.execute("ALTER TABLE users ADD COLUMN active_workspace_id INTEGER")
+        # 結構遷移只在 SQLite 上跑；Postgres 一律全新建立（無舊資料可遷移）。
+        if not dbcompat.IS_PG:
+            # 舊版 users 可能沒有 active_workspace_id 欄位。
+            if _has_table(conn, "users") and not _has_column(conn, "users", "active_workspace_id"):
+                conn.execute("ALTER TABLE users ADD COLUMN active_workspace_id INTEGER")
 
-        # v1（以 user_id 隔離）→ v2（以 workspace_id 隔離）遷移。
-        if _has_table(conn, "customers") and _has_column(conn, "customers", "user_id") \
-                and not _has_column(conn, "customers", "workspace_id"):
-            _migrate_v1_to_v2(conn)
+            # v1（以 user_id 隔離）→ v2（以 workspace_id 隔離）遷移。
+            if _has_table(conn, "customers") and _has_column(conn, "customers", "user_id") \
+                    and not _has_column(conn, "customers", "workspace_id"):
+                _migrate_v1_to_v2(conn)
 
         conn.executescript(_DATA)
         conn.executescript(_INDEXES)
-        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        if not dbcompat.IS_PG:
+            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         conn.commit()
     finally:
         conn.close()

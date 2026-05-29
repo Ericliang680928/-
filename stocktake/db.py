@@ -13,7 +13,8 @@
 from __future__ import annotations
 
 import os
-import sqlite3
+
+import dbcompat
 
 DB_PATH = os.environ.get(
     "STOCKTAKE_DB",
@@ -107,13 +108,8 @@ CREATE INDEX IF NOT EXISTS idx_items_status ON batch_items(batch_id, status);
 """
 
 
-def connect() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=15)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
-    return conn
+def connect():
+    return dbcompat.connect(DB_PATH)
 
 
 def _has_column(conn, table: str, column: str) -> bool:
@@ -122,7 +118,10 @@ def _has_column(conn, table: str, column: str) -> bool:
 
 
 def _migrate(conn) -> None:
-    """既有資料庫補欄位（新增「規格」相關欄位）。"""
+    """既有 SQLite 資料庫補欄位（新增「規格」相關欄位）。
+
+    Postgres 一律是全新建立、schema 已含這些欄位，故不需遷移。
+    """
     if not _has_column(conn, "products", "spec"):
         conn.execute("ALTER TABLE products ADD COLUMN spec TEXT DEFAULT ''")
     if not _has_column(conn, "batch_items", "spec_snapshot"):
@@ -133,7 +132,8 @@ def init_db() -> None:
     conn = connect()
     try:
         conn.executescript(_SCHEMA)
-        _migrate(conn)
+        if not dbcompat.IS_PG:
+            _migrate(conn)
         conn.commit()
     finally:
         conn.close()
