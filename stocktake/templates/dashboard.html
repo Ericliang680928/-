@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block nav_home %}active{% endblock %}
+{% block content %}
+<div class="stats">
+  <div class="stat"><div class="n">{{ stats.active_products }}</div><div class="l">啟用產品</div></div>
+  <div class="stat"><div class="n">{{ stats.open_batches }}</div><div class="l">進行中批次</div></div>
+  <div class="stat"><div class="n">{{ stats.closed_batches }}</div><div class="l">已結案批次</div></div>
+</div>
+
+{% if me.role == 'admin' %}
+<a href="/batches/new"><button class="primary big" style="margin:6px 0 14px">➕ 建立盤點批次</button></a>
+{% endif %}
+
+<div class="card">
+  <h2>進行中的盤點</h2>
+  <div class="blist" id="open"></div>
+  <p class="muted" id="empty">目前沒有進行中的批次。</p>
+</div>
+
+{% if stats.active_products == 0 and me.role == 'admin' %}
+<div class="card">
+  <h2>👋 第一次使用</h2>
+  <p class="muted">產品主檔還是空的。請先到「🔄 同步」把來源產品匯入，再建立盤點批次。</p>
+  <a href="/sync"><button class="primary">前往同步設定</button></a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block script %}
+<script>
+const batches = {{ batches|tojson }};
+const open = batches.filter(b => b.status === '進行中');
+$("#empty").style.display = open.length ? "none" : "block";
+$("#open").innerHTML = open.map(b => `
+  <a href="/batches/${b.id}/count">
+    <div class="row spread"><span class="t">${esc(b.title || b.id)}</span>
+      <span class="badge b-進行中">進行中</span></div>
+    <div class="muted">盤點日期 ${esc(b.count_date)} · 建立人 ${esc(b.created_by)}</div>
+    <div class="bar"><i style="width:${b.progress}%"></i></div>
+    <div class="muted">${b.done}/${b.total} 已盤（差異 ${b.counts['差異']}・已覆核 ${b.counts['已覆核']}）</div>
+  </a>`).join("");
+</script>
+{% endblock %}

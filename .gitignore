@@ -7,4 +7,9 @@ venv/
 data/app.db
 data/app.db-*
 data/sales.json
+data/stocktake.db
+data/stocktake.db-*
+# 服務帳號金鑰，切勿進版控
+*service-account*.json
+gcp-key.json
 .env

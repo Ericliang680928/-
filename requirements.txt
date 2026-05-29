@@ -1,5 +1,8 @@
 Flask>=3.0
 openpyxl>=3.1
 gunicorn>=21.0
-# 選配：要啟用 AI 解析補強時才需要安裝
+# 選配：口語銷貨單的 AI 解析補強
 anthropic>=0.40
+# 選配：庫存盤點系統的 Google Sheets 同步（用服務帳號）
+gspread>=6.0
+google-auth>=2.0

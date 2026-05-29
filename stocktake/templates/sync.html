@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block htitle %} · 同步{% endblock %}
+{% block nav_sync %}active{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>Google 連線狀態</h2>
+  <table>
+    <tr><td>服務帳號憑證</td><td>{{ '✅ 已設定' if status.has_credentials else '❌ 未設定' }}</td></tr>
+    <tr><td>gspread 套件</td><td>{{ '✅ 已安裝' if status.gspread_installed else '❌ 未安裝' }}</td></tr>
+    <tr><td>可連線 Google</td><td>{{ '✅ 是' if status.configured else '❌ 否（將以本機 CSV 退化）' }}</td></tr>
+    {% if status.service_account_email %}<tr><td>服務帳號 email</td><td>{{ status.service_account_email }}</td></tr>{% endif %}
+    <tr><td>來源試算表</td><td>{{ status.source_sheet_id }} / {{ status.source_worksheet }}</td></tr>
+    <tr><td>專屬試算表</td><td>{{ status.dedicated_sheet_id }}</td></tr>
+  </table>
+  {% if not status.configured %}
+  <p class="muted" style="margin-top:8px">未設定服務帳號時：可用「從來源匯入」載入本機範例產品（{{ '產品名單' }}），但「寫回專屬 Sheet」需先設定憑證。設定方式見 README。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>同步動作</h2>
+  <button class="primary big" id="pullBtn">⬇️ 從來源匯入產品（更新產品主檔）</button>
+  <button class="big" id="pushBtn" style="margin-top:10px">⬆️ 寫回專屬 Sheet（5 個工作表）</button>
+  <p class="err" id="err"></p>
+  <p class="muted" id="result"></p>
+</div>
+
+<div class="card">
+  <h2>同步日誌</h2>
+  <table><thead><tr><th>時間</th><th>新增</th><th>更新</th><th>停用</th><th>錯誤</th></tr></thead>
+  <tbody id="logs">
+    {% for l in logs %}<tr><td>{{ l.synced_at }}</td><td>{{ l.added }}</td><td>{{ l.updated }}</td><td>{{ l.disabled }}</td><td>{{ l.error }}</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+
+<div class="card">
+  <h2>帳號與角色</h2>
+  <div id="users"></div>
+  <h3>新增帳號</h3>
+  <div class="grid2">
+    <div class="field"><label>姓名</label><input id="uName"></div>
+    <div class="field"><label>角色</label><select id="uRole"><option value="counter">盤點員</option><option value="reviewer">覆核員</option><option value="admin">管理員</option></select></div>
+  </div>
+  <div class="grid2">
+    <div class="field"><label>Email</label><input id="uEmail" type="email"></div>
+    <div class="field"><label>密碼</label><input id="uPw" type="password" placeholder="至少 6 碼"></div>
+  </div>
+  <button class="primary" id="addUser">新增帳號</button>
+  <p class="err" id="uErr"></p>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+$("#pullBtn").onclick=async()=>{
+  $("#err").textContent="";$("#pullBtn").disabled=true;
+  try{const r=await post("/api/sync/source",{});
+    $("#result").textContent=`來源：${r.source}。新增 ${r.added}、更新 ${r.updated}、停用 ${r.disabled}。`;
+    toast("產品已匯入");setTimeout(()=>location.reload(),1200);
+  }catch(e){$("#err").textContent=e.message;}finally{$("#pullBtn").disabled=false;}
+};
+$("#pushBtn").onclick=async()=>{
+  $("#err").textContent="";$("#pushBtn").disabled=true;
+  try{await post("/api/sync/push",{});toast("已寫回專屬 Sheet");}
+  catch(e){$("#err").textContent=e.message;}finally{$("#pushBtn").disabled=false;}
+};
+
+const ROLES={admin:"管理員",counter:"盤點員",reviewer:"覆核員"};
+async function loadUsers(){
+  const r=await api("/api/users");
+  $("#users").innerHTML=`<table><thead><tr><th>姓名</th><th>Email</th><th>角色</th></tr></thead><tbody>`+
+    r.users.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td>
+      <td><select data-id="${u.id}" class="roleSel" style="padding:6px">
+        ${Object.entries(ROLES).map(([k,v])=>`<option value="${k}" ${u.role===k?'selected':''}>${v}</option>`).join("")}
+      </select></td></tr>`).join("")+`</tbody></table>`;
+  $$(".roleSel").forEach(s=>s.onchange=async()=>{
+    await post(`/api/users/${s.dataset.id}/role`,{role:s.value});toast("角色已更新");});
+}
+$("#addUser").onclick=async()=>{
+  $("#uErr").textContent="";
+  try{await post("/api/users",{name:$("#uName").value,email:$("#uEmail").value,
+      password:$("#uPw").value,role:$("#uRole").value});
+    $("#uName").value="";$("#uEmail").value="";$("#uPw").value="";toast("帳號已新增");loadUsers();
+  }catch(e){$("#uErr").textContent=e.message;}
+};
+loadUsers();
+</script>
+{% endblock %}

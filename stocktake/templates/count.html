@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block htitle %} · 盤點{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:10px">
+  <div class="row spread">
+    <div><b>{{ batch.title or batch.id }}</b><span class="badge b-{{ batch.status }}" style="margin-left:6px">{{ batch.status }}</span></div>
+    <a href="/batches/{{ batch.id }}/review"><button>差異覆核 →</button></a>
+  </div>
+  <div class="muted">盤點日期 {{ batch.count_date }}</div>
+  <div class="bar"><i id="bar" style="width:{{ batch.progress }}%"></i></div>
+  <div class="muted" id="prog"></div>
+</div>
+
+{% if batch.status != '進行中' %}
+<div class="card" style="border-color:#fde68a;background:#fffbeb">
+  ⚠️ 此批次已<b>{{ batch.status }}</b>，盤點明細已凍結、不可修改。如需更正請到
+  <a href="/batches/{{ batch.id }}/review">差異覆核</a>頁新增「調整紀錄」。
+</div>
+{% endif %}
+
+<div class="searchbar">
+  <input id="q" type="search" placeholder="🔍 搜尋商品編號 / 名稱 / 類別" inputmode="search">
+  <div class="filters" id="filters">
+    <span class="chip active" data-s="">全部</span>
+    <span class="chip" data-s="未盤">未盤</span>
+    <span class="chip" data-s="已盤">已盤</span>
+    <span class="chip" data-s="差異">差異</span>
+    <span class="chip" data-s="已覆核">已覆核</span>
+  </div>
+</div>
+
+<div id="list"></div>
+<p class="muted" id="empty hidden"></p>
+{% endblock %}
+
+{% block script %}
+<script>
+const BID = "{{ batch.id }}";
+const RO = "{{ batch.status }}" !== "進行中";   // 唯讀
+let ITEMS = [];
+let filterStatus = "";
+let q = "";
+
+function fmtDiff(d){
+  if (d === null || d === undefined) return {t:"—",c:"zero"};
+  const n = Number(d);
+  return {t:(n>0?"+":"")+n, c:n>0?"pos":(n<0?"neg":"zero")};
+}
+function visible(){
+  return ITEMS.filter(it=>{
+    if(filterStatus && it.status!==filterStatus) return false;
+    if(q){const s=(it.product_code+it.name_snapshot+it.category_snapshot).toLowerCase();
+      if(!s.includes(q.toLowerCase())) return false;}
+    return true;
+  });
+}
+function progress(){
+  const c={未盤:0,已盤:0,差異:0,已覆核:0}; ITEMS.forEach(i=>c[i.status]++);
+  const total=ITEMS.length, done=total-c.未盤;
+  $("#bar").style.width=(total?Math.round(done/total*100):0)+"%";
+  $("#prog").textContent=`${done}/${total} 已盤 · 差異 ${c.差異} · 已覆核 ${c.已覆核}`;
+}
+function render(){
+  const vis=visible();
+  $("#list").innerHTML = vis.map(it=>{
+    const d=fmtDiff(it.diff_qty);
+    const showReason = it.status==='差異';
+    return `<div class="item s-${it.status}" data-code="${esc(it.product_code)}">
+      <div class="row spread"><span class="nm">${esc(it.name_snapshot)}</span>
+        <span class="badge b-${it.status}">${it.status}</span></div>
+      <div class="code">${esc(it.product_code)} · ${esc(it.category_snapshot||'')}</div>
+      <div class="qtyrow">
+        <div class="book">帳面<br><b>${it.book_qty_snapshot}</b></div>
+        <input class="actual" type="number" inputmode="decimal" step="any"
+          value="${it.actual_qty===null?'':it.actual_qty}" placeholder="實盤數量" ${RO?'disabled':''}>
+        <div class="diff ${d.c}">${d.t}</div>
+      </div>
+      <input class="reason ${showReason?'':'hidden'}" placeholder="差異原因（選填）"
+        value="${esc(it.diff_reason||'')}" ${RO?'disabled':''} style="margin-top:8px">
+      <div class="muted" style="margin-top:4px">
+        ${it.counter?('盤點：'+esc(it.counter)+' '+esc(it.counted_at||'')):''}
+        ${it.reviewer?(' · 覆核：'+esc(it.reviewer)):''}
+        <span class="saved hidden">✓ 已儲存</span>
+      </div>
+    </div>`;
+  }).join("") || `<p class="muted">沒有符合的品項。</p>`;
+  bind();
+  progress();
+}
+function bind(){
+  $$(".item").forEach(card=>{
+    const code=card.dataset.code;
+    const input=$(".actual",card);
+    const reason=$(".reason",card);
+    if(!input) return;
+    const save=()=>saveItem(code,input.value,reason?reason.value:"",card);
+    input.addEventListener("blur",save);
+    input.addEventListener("keydown",e=>{
+      if(e.key==="Enter"){e.preventDefault();save();focusNext(card);}
+    });
+    if(reason) reason.addEventListener("blur",save);
+  });
+}
+function focusNext(card){
+  const cards=$$(".item"); const i=cards.indexOf(card);
+  for(let j=i+1;j<cards.length;j++){const inp=$(".actual",cards[j]);
+    if(inp&&!inp.disabled){inp.focus();inp.select?.();return;}}
+}
+async function saveItem(code,val,reason,card){
+  const it=ITEMS.find(x=>x.product_code===code); if(!it) return;
+  const orig=it.actual_qty===null?"":String(it.actual_qty);
+  if(String(val)===orig && (reason||"")===(it.diff_reason||"")) return; // 沒變不存
+  try{
+    const r=await post(`/api/batches/${BID}/count`,
+      {product_code:code,actual_qty:val,version:it.version,diff_reason:reason});
+    Object.assign(it,r.item);
+    render();  // 重畫以更新狀態/差異
+    const fresh=$(`.item[data-code="${CSS.escape(code)}"] .saved`); if(fresh){fresh.classList.remove("hidden");}
+  }catch(err){
+    if(err.status===409 && err.data && err.data.conflict){
+      const cur=err.data.current;
+      if(confirm(`衝突：${err.data.message}\n目前實盤=${cur.actual_qty}。\n要用你輸入的「${val}」覆蓋嗎？`)){
+        it.version=cur.version; saveItem(code,val,reason,card);
+      }else{Object.assign(it,cur);render();}
+    }else{toast(err.message);}
+  }
+}
+async function load(){
+  const r=await api(`/api/batches/${BID}/items`);
+  ITEMS=r.items; render();
+}
+$("#q").addEventListener("input",e=>{q=e.target.value;render();});
+$$("#filters .chip").forEach(c=>c.onclick=()=>{
+  $$("#filters .chip").forEach(x=>x.classList.remove("active"));
+  c.classList.add("active"); filterStatus=c.dataset.s; render();
+});
+load();
+</script>
+{% endblock %}

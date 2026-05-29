@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block htitle %} · 歷史{% endblock %}
+{% block nav_hist %}active{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="filters" id="filters">
+    <span class="chip active" data-s="">全部</span>
+    <span class="chip" data-s="進行中">進行中</span>
+    <span class="chip" data-s="已結案">已結案</span>
+    <span class="chip" data-s="已作廢">已作廢</span>
+  </div>
+  <div class="blist" id="list" style="margin-top:10px"></div>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+const batches={{ batches|tojson }};
+let f="";
+function render(){
+  const rows=batches.filter(b=>!f||b.status===f);
+  $("#list").innerHTML=rows.length?rows.map(b=>`
+    <a href="/batches/${b.id}/${b.status==='進行中'?'count':'review'}">
+      <div class="row spread"><span class="t">${esc(b.title||b.id)}</span><span class="badge b-${b.status}">${b.status}</span></div>
+      <div class="muted">盤點日期 ${esc(b.count_date)} · 建立人 ${esc(b.created_by)} · ${esc(b.started_at||'')}</div>
+      <div class="muted">${b.done}/${b.total} 已盤 · 差異 ${b.counts['差異']} · 已覆核 ${b.counts['已覆核']}</div>
+    </a>`).join(""):`<p class="muted">沒有符合的批次。</p>`;
+}
+$$("#filters .chip").forEach(c=>c.onclick=()=>{
+  $$("#filters .chip").forEach(x=>x.classList.remove("active"));c.classList.add("active");f=c.dataset.s;render();});
+render();
+</script>
+{% endblock %}

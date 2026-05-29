@@ -136,3 +136,66 @@ static/                前端 JS / CSS
 data/                  清單格式範例 CSV；執行時的 app.db 不進版控
 tests/                 測試
 ```
+
+---
+
+# 📦 庫存盤點系統（第二個 App）
+
+以 **Google Sheet 為產品來源**、**程式 SQLite 為唯一正本**、再**同步寫回專屬 Google Sheet** 的庫存盤點系統。手機優先、支援多人同時盤點。
+
+啟動：`python run_stocktake.py` → http://127.0.0.1:5001 （第一次請先「註冊」建立管理員）。
+部署：`gunicorn run_stocktake:app`。
+
+## 功能與頁面
+
+- **登入 + 三種角色**：管理員(admin) / 盤點員(counter) / 覆核員(reviewer)。第一位註冊者為管理員，之後由管理員於「同步」頁建立帳號與指派角色。
+- **儀表板**：啟用產品數、進行中/已結案批次、進行中批次進度。
+- **建立批次**：盤點日期**必填**；可選類別範圍；建立時依目前產品與帳面庫存產生明細快照。
+- **盤點作業**（手機優先）：頂部搜尋、狀態篩選、大數字輸入、**Enter 跳下一筆**、**自動儲存**；四種狀態 **未盤 / 已盤 / 差異 / 已覆核**。
+- **多人同時盤點防覆寫**：每筆明細有 version，採**樂觀鎖**；他人已更新時回 409 並提示，可選擇覆蓋。
+- **差異覆核**：勾選品項標記已覆核；管理員/覆核員可**結案**。
+- **結案不可改**：結案後明細凍結，實盤數套用到庫存現況；要更正只能**新增調整紀錄**（保留稽核軌跡）。
+- **歷史查詢**：依狀態查所有批次。
+- **同步設定**：從來源匯入產品（更新產品主檔）、寫回專屬 Sheet、看同步日誌、管理帳號角色。
+
+## 資料來源與專屬 Sheet
+
+- 來源產品：`SOURCE_SHEET_ID` 的工作表 `產品名單`（欄位：商品編號、商品名稱、類別、規格）。
+- 專屬盤點 Sheet（已建立於來源同目錄）：`庫存盤點系統（專屬）`
+  - 工作表：產品主檔 / 盤點批次 / 盤點明細 / 庫存現況 / 同步日誌（缺的會由 App 用服務帳號自動建立）。
+- **未設定 Google 憑證時**：「從來源匯入」會改讀本機 `stocktake/data/source_products.csv`（111 筆範例），其餘功能照常，唯「寫回專屬 Sheet」需先設定服務帳號。
+
+## 設定 Google 服務帳號（部署後讀寫 Sheet）
+
+1. 到 Google Cloud Console 建立專案 → 啟用 **Google Sheets API** 與 **Google Drive API**。
+2. 建立**服務帳號**並下載 JSON 金鑰。
+3. 把**來源 Sheet** 與**專屬 Sheet** 都「共用」給服務帳號的 email（`xxx@xxx.iam.gserviceaccount.com`），來源給「檢視者」、專屬給「編輯者」。
+4. 設定環境變數後啟動：
+   ```bash
+   export GOOGLE_SERVICE_ACCOUNT_JSON=/path/to/key.json   # 或直接貼 JSON 內容
+   export SOURCE_SHEET_ID=1JOpCUfAS3YEHHGUq_NR8twxGzDh7C0_p7bZAdOc0tf0
+   export DEDICATED_SHEET_ID=1-t5dPhduceaVwVk3vtoestXPOKR6_yk9xHKCtiS-Ipc
+   export SECRET_KEY=$(python -c "import secrets;print(secrets.token_hex(32))")
+   pip install -r requirements.txt   # 含 gspread、google-auth
+   gunicorn run_stocktake:app
+   ```
+5. 進「同步」頁，先「⬇️ 從來源匯入產品」，再「⬆️ 寫回專屬 Sheet」（會自動補齊 5 個工作表）。
+
+> 安全：服務帳號金鑰**切勿**進版控（`.gitignore` 已排除 `*service-account*.json`）。
+
+## 結構
+
+```
+run_stocktake.py        啟動入口（gunicorn run_stocktake:app）
+stocktake/
+  db.py                 SQLite schema（產品/批次/明細/庫存/調整/同步/帳號）
+  store.py              商業邏輯（樂觀鎖、結案凍結、調整紀錄、角色）
+  sheets.py             Google Sheets 同步（服務帳號；可離線退化）
+  app.py                Flask 後端與權限
+  templates/            login/dashboard/batch_new/count/review/history/sync
+  static/               手機優先 CSS / 共用 JS
+  data/source_products.csv  來源產品範例（離線測試用）
+tests/test_stocktake.py 核心邏輯測試
+```
+
+測試：`python tests/test_stocktake.py`

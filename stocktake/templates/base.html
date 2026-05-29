@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <title>{% block title %}庫存盤點系統{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  {% if me and me.id %}
+  <header>
+    <h1>📦 庫存盤點{% block htitle %}{% endblock %}</h1>
+    <div class="who">
+      {{ me.name }} <span class="role-chip">{{ {'admin':'管理員','counter':'盤點員','reviewer':'覆核員'}[me.role] }}</span><br>
+      <a href="#" onclick="logout();return false" style="color:#fff;opacity:.85;font-size:11px">登出</a>
+    </div>
+  </header>
+  {% endif %}
+
+  <main>{% block content %}{% endblock %}</main>
+
+  {% if me and me.id %}
+  <nav class="nav">
+    <a href="/" class="{% block nav_home %}{% endblock %}"><span class="ic">🏠</span>儀表板</a>
+    {% if me.role == 'admin' %}<a href="/batches/new" class="{% block nav_new %}{% endblock %}"><span class="ic">➕</span>建立批次</a>{% endif %}
+    <a href="/history" class="{% block nav_hist %}{% endblock %}"><span class="ic">📚</span>歷史</a>
+    {% if me.role == 'admin' %}<a href="/sync" class="{% block nav_sync %}{% endblock %}"><span class="ic">🔄</span>同步</a>{% endif %}
+  </nav>
+  {% endif %}
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {% block script %}{% endblock %}
+</body>
+</html>
