@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.xlsx
+# 執行時產生的銷貨紀錄（不進版控）
+data/sales.json
+.env

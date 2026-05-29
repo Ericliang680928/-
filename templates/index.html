@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>口語化銷貨單系統</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <h1>🗣️ 口語化銷貨單系統</h1>
+    <p class="sub">用講的就能記帳 — 自動對應顧客與產品清單，整理成「產品 × 日期」統計表</p>
+  </header>
+
+  <main>
+    <!-- 1. 輸入 -->
+    <section class="card">
+      <h2>① 口語輸入</h2>
+      <textarea id="input" rows="2" placeholder="例如：今天王小明買了三箱可口可樂跟兩瓶礦泉水"></textarea>
+      <div class="row">
+        <button id="parseBtn" class="primary">解析</button>
+        <label class="muted"><input type="checkbox" id="useLlm" checked> 規則搞不定時用 AI 補強 <span id="llmTag"></span></label>
+      </div>
+      <div class="examples muted">
+        試試：
+        <a href="#" class="ex">昨天大同公司訂可樂50個、礦泉水12瓶</a> ·
+        <a href="#" class="ex">5月20號 全家 雪碧三箱 綠茶兩箱</a>
+      </div>
+    </section>
+
+    <!-- 2. 確認 -->
+    <section class="card hidden" id="previewCard">
+      <h2>② 確認與修正</h2>
+      <div class="row">
+        <label>日期 <input type="date" id="pvDate"></label>
+        <label>顧客
+          <select id="pvCustomer"></select>
+        </label>
+        <span id="srcTag" class="tag"></span>
+      </div>
+      <table class="grid" id="itemsTable">
+        <thead><tr><th>產品</th><th>編號</th><th>數量</th><th>單位</th><th>信心</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="row">
+        <button id="addItemBtn">＋ 新增一列</button>
+        <button id="saveBtn" class="primary">確認存檔</button>
+      </div>
+      <div id="notes" class="notes"></div>
+    </section>
+
+    <!-- 3. 統計表 -->
+    <section class="card">
+      <div class="row spread">
+        <h2>③ 銷售統計表（產品 × 日期）</h2>
+        <div>
+          <button id="xlsxBtn">⬇ 匯出 Excel</button>
+          <button id="csvBtn">⬇ 匯出 CSV</button>
+        </div>
+      </div>
+      <div class="scroll"><table class="grid pivot" id="pivotTable"></table></div>
+      <p class="muted" id="pivotEmpty">尚無資料。先在上面輸入並存檔幾筆銷貨吧。</p>
+    </section>
+
+    <!-- 4. 清單設定 -->
+    <section class="card">
+      <h2>④ 清單設定（提高辨識準確度）</h2>
+      <div class="lists">
+        <div>
+          <h3>顧客清單</h3>
+          <p class="muted">每行一個：<code>名稱,別名1,別名2</code></p>
+          <textarea id="custText" rows="6"></textarea>
+          <button data-save="customers">儲存顧客清單</button>
+        </div>
+        <div>
+          <h3>產品清單</h3>
+          <p class="muted">每行：<code>名稱,編號,別名1,別名2</code></p>
+          <textarea id="prodText" rows="6"></textarea>
+          <button data-save="products">儲存產品清單</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="recordsCard">
+      <div class="row spread">
+        <h2>已存銷貨明細</h2>
+        <button id="clearBtn" class="danger">清空全部</button>
+      </div>
+      <div class="scroll"><table class="grid" id="recTable"></table></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
