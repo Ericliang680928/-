@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS products (
     code             TEXT PRIMARY KEY,
     name             TEXT NOT NULL,
     category         TEXT DEFAULT '',
+    spec             TEXT DEFAULT '',       -- 規格（來源第 4 欄）
     active           INTEGER DEFAULT 1,
     source_updated_at TEXT DEFAULT '',
     synced_at        TEXT DEFAULT ''
@@ -63,6 +64,7 @@ CREATE TABLE IF NOT EXISTS batch_items (
     product_code     TEXT NOT NULL,
     name_snapshot    TEXT DEFAULT '',
     category_snapshot TEXT DEFAULT '',
+    spec_snapshot    TEXT DEFAULT '',
     book_qty_snapshot REAL DEFAULT 0,
     actual_qty       REAL,                -- 實盤庫存（null = 未盤）
     diff_qty         REAL,                -- 差異 = 實盤 - 帳面
@@ -114,10 +116,24 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def _has_column(conn, table: str, column: str) -> bool:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    return any(r["name"] == column for r in rows)
+
+
+def _migrate(conn) -> None:
+    """既有資料庫補欄位（新增「規格」相關欄位）。"""
+    if not _has_column(conn, "products", "spec"):
+        conn.execute("ALTER TABLE products ADD COLUMN spec TEXT DEFAULT ''")
+    if not _has_column(conn, "batch_items", "spec_snapshot"):
+        conn.execute("ALTER TABLE batch_items ADD COLUMN spec_snapshot TEXT DEFAULT ''")
+
+
 def init_db() -> None:
     conn = connect()
     try:
         conn.executescript(_SCHEMA)
+        _migrate(conn)
         conn.commit()
     finally:
         conn.close()

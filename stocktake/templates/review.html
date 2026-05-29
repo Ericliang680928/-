@@ -14,6 +14,16 @@
     <h2 style="margin:0">差異清單</h2>
     <label class="muted" style="margin:0"><input type="checkbox" id="showAll" style="width:auto;display:inline"> 顯示全部</label>
   </div>
+  <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center">
+    <label class="muted" style="margin:0">範圍
+      <select id="scope" style="width:auto;display:inline"><option value="diff">僅差異</option><option value="all">全部已盤</option></select>
+    </label>
+    <label class="muted" style="margin:0">排序
+      <select id="sort" style="width:auto;display:inline"><option value="category">依類別</option><option value="diff">依差異大小</option></select>
+    </label>
+    <button id="xlsxBtn">⬇️ 匯出 Excel</button>
+    <button id="csvBtn">⬇️ 匯出 CSV</button>
+  </div>
   <div id="list" style="margin-top:10px"></div>
 
   {% if batch.status == '進行中' and me.role in ['admin','reviewer'] %}
@@ -58,7 +68,7 @@ function render(){
     const canCheck = !CLOSED && it.actual_qty!==null && it.status!=='已覆核';
     return `<div class="item s-${it.status}">
       <div class="row spread"><span class="nm">${esc(it.name_snapshot)}</span><span class="badge b-${it.status}">${it.status}</span></div>
-      <div class="code">${esc(it.product_code)}</div>
+      <div class="code">${esc(it.product_code)}${it.spec_snapshot?(' · '+esc(it.spec_snapshot)):''}</div>
       <div class="row" style="margin-top:6px;gap:14px">
         <span class="muted">帳面 <b>${it.book_qty_snapshot}</b></span>
         <span class="muted">實盤 <b>${it.actual_qty===null?'—':it.actual_qty}</b></span>
@@ -72,6 +82,13 @@ function render(){
 async function load(){const r=await api(`/api/batches/${BID}/items`);ITEMS=r.items;render();
   if(CLOSED) loadAdj();}
 $("#showAll")?.addEventListener("change",e=>{showAll=e.target.checked;render();});
+
+function exportReport(fmt){
+  const scope=$("#scope").value, sort=$("#sort").value;
+  window.location=`/api/batches/${BID}/report.${fmt}?scope=${scope}&sort=${sort}`;
+}
+$("#xlsxBtn")?.addEventListener("click",()=>exportReport("xlsx"));
+$("#csvBtn")?.addEventListener("click",()=>exportReport("csv"));
 
 $("#reviewBtn")?.addEventListener("click",async()=>{
   const codes=$$(".chk:checked").map(c=>c.value);

@@ -120,6 +120,36 @@ def test_adjustment_after_close():
     assert inv["A001"]["book_qty"] == 6
 
 
+def test_spec_carried_through():
+    fresh()
+    store.import_products([
+        {"code": "A001", "name": "白米", "category": "米類", "spec": "整件"},
+    ], source_updated_at="2026-05-29")
+    p = store.load_products()[0]
+    assert p["spec"] == "整件"
+    bid = store.create_batch("2026-05-29", "管理員")
+    it = store.list_items(bid)[0]
+    assert it["spec_snapshot"] == "整件"
+
+
+def test_diff_report():
+    from stocktake import report
+    fresh(); seed_products()
+    bid = store.create_batch("2026-05-29", "員工")
+    store.update_count(bid, "A001", 10, 0, "員工")   # 無差異
+    store.update_count(bid, "B001", 3, 0, "員工")    # -2 盤虧
+    store.update_count(bid, "C001", 25, 0, "員工")   # +5 盤盈
+    items = store.list_items(bid)
+    rows = report.select_rows(items, only_diff=True, sort="diff")
+    assert [r["product_code"] for r in rows] == ["C001", "B001"]  # 依差異絕對值大→小
+    s = report.summarize(rows)
+    assert s["count"] == 2 and s["over"] == 1 and s["short"] == 1 and s["abs_sum"] == 7
+    xlsx = report.to_xlsx(store.get_batch(bid), items, [], only_diff=True, sort="category")
+    assert xlsx[:2] == b"PK" and len(xlsx) > 0  # 合法 .xlsx
+    csv_txt = report.to_csv(store.get_batch(bid), items, [])
+    assert "差異報表" in csv_txt and "B001" in csv_txt
+
+
 def test_roles_and_users():
     fresh()
     uid = store.create_user("a@t.com", "secret1", "管理員", "admin")

@@ -68,7 +68,7 @@ function render(){
     return `<div class="item s-${it.status}" data-code="${esc(it.product_code)}">
       <div class="row spread"><span class="nm">${esc(it.name_snapshot)}</span>
         <span class="badge b-${it.status}">${it.status}</span></div>
-      <div class="code">${esc(it.product_code)} · ${esc(it.category_snapshot||'')}</div>
+      <div class="code">${esc(it.product_code)} · ${esc(it.category_snapshot||'')}${it.spec_snapshot?(' · '+esc(it.spec_snapshot)):''}</div>
       <div class="qtyrow">
         <div class="book">帳面<br><b>${it.book_qty_snapshot}</b></div>
         <input class="actual" type="number" inputmode="decimal" step="any"

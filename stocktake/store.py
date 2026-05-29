@@ -112,15 +112,16 @@ def import_products(rows: list[dict], source_updated_at: str = "") -> dict:
             seen.add(code)
             name = (r.get("name") or "").strip()
             cat = (r.get("category") or "").strip()
+            spec = (r.get("spec") or "").strip()
             if code in existing:
                 conn.execute(
-                    "UPDATE products SET name=?,category=?,active=1,source_updated_at=?,synced_at=? WHERE code=?",
-                    (name, cat, source_updated_at, now, code))
+                    "UPDATE products SET name=?,category=?,spec=?,active=1,source_updated_at=?,synced_at=? WHERE code=?",
+                    (name, cat, spec, source_updated_at, now, code))
                 updated += 1
             else:
                 conn.execute(
-                    "INSERT INTO products (code,name,category,active,source_updated_at,synced_at) VALUES (?,?,?,1,?,?)",
-                    (code, name, cat, source_updated_at, now))
+                    "INSERT INTO products (code,name,category,spec,active,source_updated_at,synced_at) VALUES (?,?,?,?,1,?,?)",
+                    (code, name, cat, spec, source_updated_at, now))
                 conn.execute(
                     "INSERT OR IGNORE INTO inventory (product_code,book_qty,last_count_date,last_moved_at) VALUES (?,0,'','')",
                     (code,))
@@ -174,7 +175,7 @@ def inventory_snapshot() -> list[dict]:
     conn = connect()
     try:
         return [dict(r) for r in conn.execute(
-            "SELECT i.product_code, p.name, p.category, i.book_qty, i.last_count_date, i.last_moved_at "
+            "SELECT i.product_code, p.name, p.category, p.spec, i.book_qty, i.last_count_date, i.last_moved_at "
             "FROM inventory i LEFT JOIN products p ON p.code=i.product_code ORDER BY p.category, i.product_code"
         ).fetchall()]
     finally:
@@ -196,7 +197,7 @@ def create_batch(count_date: str, created_by: str, title: str = "",
         conn.execute(
             "INSERT INTO batches (id,count_date,title,created_by,started_at,status) VALUES (?,?,?,?,?, '進行中')",
             (batch_id, count_date, title, created_by, now))
-        q = "SELECT p.code,p.name,p.category,COALESCE(i.book_qty,0) book FROM products p " \
+        q = "SELECT p.code,p.name,p.category,p.spec,COALESCE(i.book_qty,0) book FROM products p " \
             "LEFT JOIN inventory i ON i.product_code=p.code WHERE p.active=1"
         params: list = []
         if category:
@@ -209,8 +210,8 @@ def create_batch(count_date: str, created_by: str, title: str = "",
                 continue
             conn.execute(
                 "INSERT INTO batch_items (batch_id,count_date,product_code,name_snapshot,"
-                "category_snapshot,book_qty_snapshot,status,version) VALUES (?,?,?,?,?,?, '未盤',0)",
-                (batch_id, count_date, r["code"], r["name"], r["category"], r["book"]))
+                "category_snapshot,spec_snapshot,book_qty_snapshot,status,version) VALUES (?,?,?,?,?,?,?, '未盤',0)",
+                (batch_id, count_date, r["code"], r["name"], r["category"], r["spec"], r["book"]))
         conn.commit()
         return batch_id
     finally:

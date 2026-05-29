@@ -10,9 +10,9 @@ import os
 from datetime import date
 from functools import wraps
 
-from flask import (Flask, jsonify, request, render_template, redirect, url_for, session)
+from flask import (Flask, Response, jsonify, request, render_template, redirect, url_for, session)
 
-from . import store, sheets
+from . import store, sheets, report
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-insecure-change-me")
@@ -218,6 +218,28 @@ def api_count(batch_id):
         batch_id, d.get("product_code", ""), d.get("actual_qty"),
         d.get("version"), me()["name"], d.get("note", ""), d.get("diff_reason", ""))
     return jsonify(res), code
+
+
+@app.get("/api/batches/<batch_id>/report.<fmt>")
+@login_required
+def api_report(batch_id, fmt):
+    """差異報表匯出。fmt=xlsx|csv；query：scope=diff|all、sort=category|diff。"""
+    b = store.get_batch(batch_id)
+    if not b:
+        return jsonify({"error": "批次不存在"}), 404
+    only_diff = request.args.get("scope", "diff") != "all"
+    sort = request.args.get("sort", "category")
+    items = store.list_items(batch_id)
+    adjustments = store.list_adjustments(batch_id)
+    stem = f"diff_{batch_id}"
+    if fmt == "csv":
+        data = report.to_csv(b, items, adjustments, only_diff=only_diff, sort=sort)
+        return Response(data, mimetype="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{stem}.csv"'})
+    data = report.to_xlsx(b, items, adjustments, only_diff=only_diff, sort=sort)
+    return Response(
+        data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{stem}.xlsx"'})
 
 
 @app.post("/api/batches/<batch_id>/review")

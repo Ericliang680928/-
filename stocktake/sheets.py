@@ -28,9 +28,9 @@ _LOCAL_SOURCE = os.path.join(os.path.dirname(__file__), "data", "source_products
 
 # 專屬 Sheet 各工作表表頭（與需求一致）
 TAB_HEADERS = {
-    "產品主檔": ["商品編號", "商品名稱", "類別", "啟用狀態", "來源更新時間", "同步時間"],
+    "產品主檔": ["商品編號", "商品名稱", "類別", "規格", "啟用狀態", "來源更新時間", "同步時間"],
     "盤點批次": ["批次ID", "盤點日期", "建立人", "開始時間", "完成時間", "狀態"],
-    "盤點明細": ["批次ID", "盤點日期", "商品編號", "商品名稱快照", "類別快照", "帳面庫存快照",
+    "盤點明細": ["批次ID", "盤點日期", "商品編號", "商品名稱快照", "類別快照", "規格快照", "帳面庫存快照",
                "實盤庫存", "差異數量", "差異原因", "備註", "盤點人員", "盤點時間", "覆核人員", "覆核時間"],
     "庫存現況": ["商品編號", "目前帳面庫存", "最近盤點日期", "最近異動時間"],
     "同步日誌": ["同步批次ID", "同步時間", "新增筆數", "更新筆數", "停用筆數", "錯誤訊息"],
@@ -107,6 +107,7 @@ def read_source_products() -> tuple[list[dict], str]:
                 "code": str(r.get("商品編號", "")).strip(),
                 "name": str(r.get("商品名稱", "")).strip(),
                 "category": str(r.get("類別", "")).strip(),
+                "spec": str(r.get("規格", "")).strip(),
             })
         return [r for r in out if r["code"]], f"Google Sheet：{SOURCE_WORKSHEET}"
 
@@ -118,7 +119,8 @@ def read_source_products() -> tuple[list[dict], str]:
                 code = (r.get("商品編號") or "").strip()
                 if code:
                     out.append({"code": code, "name": (r.get("商品名稱") or "").strip(),
-                                "category": (r.get("類別") or "").strip()})
+                                "category": (r.get("類別") or "").strip(),
+                                "spec": (r.get("規格") or "").strip()})
     return out, "本機 CSV（未設定 Google 憑證）"
 
 
@@ -147,15 +149,16 @@ def push_to_dedicated(products, batches, items, inventory, sync_logs) -> dict:
         ws.update([header] + rows, "A1", value_input_option="USER_ENTERED")
 
     write("產品主檔", TAB_HEADERS["產品主檔"],
-          [[p["code"], p["name"], p["category"], "啟用" if p["active"] else "停用",
+          [[p["code"], p["name"], p["category"], p.get("spec", ""), "啟用" if p["active"] else "停用",
             p["source_updated_at"], p["synced_at"]] for p in products])
     write("盤點批次", TAB_HEADERS["盤點批次"],
           [[b["id"], b["count_date"], b["created_by"], b["started_at"], b["finished_at"], b["status"]]
            for b in batches])
     write("盤點明細", TAB_HEADERS["盤點明細"],
           [[it["batch_id"], it["count_date"], it["product_code"], it["name_snapshot"],
-            it["category_snapshot"], it["book_qty_snapshot"], it["actual_qty"], it["diff_qty"],
-            it["diff_reason"], it["note"], it["counter"], it["counted_at"], it["reviewer"], it["reviewed_at"]]
+            it["category_snapshot"], it.get("spec_snapshot", ""), it["book_qty_snapshot"],
+            it["actual_qty"], it["diff_qty"], it["diff_reason"], it["note"], it["counter"],
+            it["counted_at"], it["reviewer"], it["reviewed_at"]]
            for it in items])
     write("庫存現況", TAB_HEADERS["庫存現況"],
           [[r["product_code"], r["book_qty"], r["last_count_date"], r["last_moved_at"]] for r in inventory])
