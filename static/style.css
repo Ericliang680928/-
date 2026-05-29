@@ -86,3 +86,17 @@ code { background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 12p
 .auth-box label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
 .auth-box .primary { margin-top: 4px; }
 .err { color: var(--danger); font-size: 13px; min-height: 18px; margin: 4px 0 0; }
+
+/* 帳本切換器 */
+.ws-switch { color: #fff; display: flex; align-items: center; gap: 5px; font-size: 13px; }
+.ws-switch select { background: rgba(255,255,255,.15); color: #fff; border-color: rgba(255,255,255,.4);
+  min-width: 150px; padding: 5px 8px; }
+.ws-switch select option { color: #1e293b; }
+
+/* 團隊卡片 */
+.team-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin-top: 8px; }
+@media (max-width: 720px){ .team-grid { grid-template-columns: 1fr; } }
+.invite { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.invite code { font-size: 15px; letter-spacing: 1px; background: #eef2ff; color: #4338ca; padding: 3px 8px; }
+.members { list-style: none; padding: 0; margin: 4px 0 0; font-size: 14px; }
+.members li { padding: 3px 0; border-bottom: 1px dashed var(--line); }

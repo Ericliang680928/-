@@ -14,6 +14,9 @@
         <p class="sub">用講的就能記帳 — 自動對應顧客與產品清單，整理成「產品 × 日期」統計表</p>
       </div>
       <div class="user-box">
+        <label class="ws-switch">帳本：
+          <select id="wsSelect"></select>
+        </label>
         <span id="userEmail">{{ user_email }}</span>
         <button id="logoutBtn">登出</button>
       </div>
@@ -89,6 +92,37 @@
           <p class="muted">每行：<code>名稱,編號,別名1,別名2</code></p>
           <textarea id="prodText" rows="6"></textarea>
           <button data-save="products">儲存產品清單</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 團隊帳本 -->
+    <section class="card" id="teamCard">
+      <h2>⑤ 團隊共享帳本</h2>
+      <p class="muted">同一個帳本的成員，會共用同一份顧客/產品清單與銷貨資料。把邀請碼給同事，他註冊登入後輸入即可加入。</p>
+      <div class="team-grid">
+        <div>
+          <h3>目前帳本</h3>
+          <p><b id="curWsName">—</b> <span id="curWsRole" class="tag rule"></span></p>
+          <div class="invite">
+            <span class="muted">邀請碼：</span>
+            <code id="inviteCode">—</code>
+            <button id="copyInvite">複製</button>
+          </div>
+          <h3 style="margin-top:14px">成員</h3>
+          <ul id="memberList" class="members"></ul>
+        </div>
+        <div>
+          <h3>建立新帳本</h3>
+          <div class="row" style="margin-top:6px">
+            <input type="text" id="newWsName" placeholder="例如：台中分店">
+            <button id="createWsBtn">建立</button>
+          </div>
+          <h3 style="margin-top:14px">加入別人的帳本</h3>
+          <div class="row" style="margin-top:6px">
+            <input type="text" id="joinCode" placeholder="輸入邀請碼">
+            <button id="joinWsBtn">加入</button>
+          </div>
         </div>
       </div>
     </section>

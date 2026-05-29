@@ -28,9 +28,71 @@ async function init() {
   $("#custText").value = CUSTOMERS.map(c => [c.name, ...(c.aliases || [])].join(",")).join("\n");
   $("#prodText").value = PRODUCTS.map(p => [p.name, p.code, ...(p.aliases || [])].filter(Boolean).join(",")).join("\n");
   $("#llmTag").textContent = data.llm_available ? "（AI 已就緒）" : "（未設定 AI 金鑰，僅用規則）";
+  await refreshWorkspaces();
   await refreshPivot();
   await refreshRecords();
 }
+
+// ---------- 帳本 / 團隊 ----------
+async function refreshWorkspaces() {
+  const data = await api("/api/workspaces");
+  const sel = $("#wsSelect");
+  sel.innerHTML = data.workspaces.map(w =>
+    `<option value="${w.id}"${w.is_active ? " selected" : ""}>${esc(w.name)}（${w.members}人）</option>`
+  ).join("");
+  const cur = data.current;
+  if (cur) {
+    $("#curWsName").textContent = cur.name;
+    $("#curWsRole").textContent = cur.my_role === "owner" ? "擁有者" : "成員";
+    $("#inviteCode").textContent = cur.invite_code;
+    $("#memberList").innerHTML = cur.members.map(m =>
+      `<li>${esc(m.email)} <span class="muted">${m.role === "owner" ? "· 擁有者" : ""}</span></li>`
+    ).join("");
+  }
+}
+
+$("#wsSelect").onchange = async (e) => {
+  await api("/api/workspaces/switch", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workspace_id: parseInt(e.target.value) }),
+  });
+  await init();
+  toast("已切換帳本");
+};
+
+$("#createWsBtn").onclick = async () => {
+  const name = $("#newWsName").value.trim();
+  if (!name) return toast("請輸入帳本名稱");
+  try {
+    await api("/api/workspaces", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    $("#newWsName").value = "";
+    await init();
+    toast("已建立並切換到新帳本");
+  } catch (e) { toast("建立失敗：" + e.message); }
+};
+
+$("#joinWsBtn").onclick = async () => {
+  const code = $("#joinCode").value.trim();
+  if (!code) return toast("請輸入邀請碼");
+  try {
+    const r = await api("/api/workspaces/join", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ invite_code: code }),
+    });
+    $("#joinCode").value = "";
+    await init();
+    toast(`已加入「${r.name}」`);
+  } catch (e) { toast("加入失敗：" + e.message); }
+};
+
+$("#copyInvite").onclick = async () => {
+  const code = $("#inviteCode").textContent;
+  try { await navigator.clipboard.writeText(code); toast("已複製邀請碼"); }
+  catch (e) { toast("邀請碼：" + code); }
+};
 
 // ---------- 解析 ----------
 $("#parseBtn").onclick = doParse;
@@ -166,10 +228,11 @@ async function refreshRecords() {
   const { records } = await api("/api/records");
   const t = $("#recTable");
   if (!records.length) { t.innerHTML = "<tbody><tr><td class='muted'>尚無紀錄</td></tr></tbody>"; return; }
-  let html = "<thead><tr><th>日期</th><th>顧客</th><th>產品</th><th>編號</th><th>數量</th><th>單位</th><th></th></tr></thead><tbody>";
+  let html = "<thead><tr><th>日期</th><th>顧客</th><th>產品</th><th>編號</th><th>數量</th><th>單位</th><th>輸入者</th><th></th></tr></thead><tbody>";
   for (const r of records.slice().reverse()) {
     html += `<tr><td>${esc(r.date)}</td><td>${esc(r.customer_name || "")}</td><td>${esc(r.product_name)}</td>` +
       `<td>${esc(r.product_code || "")}</td><td>${r.quantity}</td><td>${esc(r.unit || "")}</td>` +
+      `<td class="muted">${esc(r.created_by_email || "")}</td>` +
       `<td><button class="del" data-id="${r.id}">✕</button></td></tr>`;
   }
   t.innerHTML = html + "</tbody>";

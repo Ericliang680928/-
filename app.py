@@ -48,6 +48,11 @@ def current_user_id() -> int:
     return session["user_id"]
 
 
+def current_ws() -> int:
+    """目前作用中的帳本 id（資料隔離與團隊共享的單位）。"""
+    return store.get_active_workspace_id(current_user_id())
+
+
 @app.get("/login")
 def login_page():
     if session.get("user_id"):
@@ -93,15 +98,59 @@ def index():
 
 
 # ---------------------------------------------------------------------------
+# 帳本 / 團隊
+# ---------------------------------------------------------------------------
+@app.get("/api/workspaces")
+@login_required
+def get_workspaces():
+    uid = current_user_id()
+    ws = current_ws()
+    return jsonify({
+        "workspaces": store.list_workspaces(uid),
+        "current": store.workspace_detail(uid, ws),
+    })
+
+
+@app.post("/api/workspaces")
+@login_required
+def create_workspace():
+    data = request.get_json(force=True)
+    name = (data.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "請輸入帳本名稱"}), 400
+    store.create_workspace(current_user_id(), name)
+    return jsonify({"ok": True})
+
+
+@app.post("/api/workspaces/switch")
+@login_required
+def switch_workspace():
+    data = request.get_json(force=True)
+    if not store.switch_workspace(current_user_id(), int(data.get("workspace_id", 0))):
+        return jsonify({"error": "你不是該帳本的成員"}), 403
+    return jsonify({"ok": True})
+
+
+@app.post("/api/workspaces/join")
+@login_required
+def join_workspace():
+    data = request.get_json(force=True)
+    ws = store.join_workspace(current_user_id(), data.get("invite_code", ""))
+    if not ws:
+        return jsonify({"error": "邀請碼無效"}), 404
+    return jsonify({"ok": True, "name": ws["name"]})
+
+
+# ---------------------------------------------------------------------------
 # 清單管理
 # ---------------------------------------------------------------------------
 @app.get("/api/lists")
 @login_required
 def get_lists():
-    uid = current_user_id()
+    ws = current_ws()
     return jsonify({
-        "customers": store.load_customers(uid),
-        "products": store.load_products(uid),
+        "customers": store.load_customers(ws),
+        "products": store.load_products(ws),
         "llm_available": llm.is_available(),
     })
 
@@ -111,8 +160,9 @@ def get_lists():
 def set_customers():
     data = request.get_json(force=True)
     items = _parse_customer_text(data.get("text", "")) if "text" in data else data.get("items", [])
-    store.save_customers(current_user_id(), items)
-    return jsonify({"customers": store.load_customers(current_user_id())})
+    ws = current_ws()
+    store.save_customers(ws, items)
+    return jsonify({"customers": store.load_customers(ws)})
 
 
 @app.post("/api/lists/products")
@@ -120,8 +170,9 @@ def set_customers():
 def set_products():
     data = request.get_json(force=True)
     items = _parse_product_text(data.get("text", "")) if "text" in data else data.get("items", [])
-    store.save_products(current_user_id(), items)
-    return jsonify({"products": store.load_products(current_user_id())})
+    ws = current_ws()
+    store.save_products(ws, items)
+    return jsonify({"products": store.load_products(ws)})
 
 
 def _parse_customer_text(text: str) -> list[dict]:
@@ -161,9 +212,9 @@ def api_parse():
     text = (data.get("text") or "").strip()
     use_llm = data.get("use_llm", True)
     today = _today(data.get("today"))
-    uid = current_user_id()
-    customers = store.load_customers(uid)
-    products = store.load_products(uid)
+    ws = current_ws()
+    customers = store.load_customers(ws)
+    products = store.load_products(ws)
 
     if not text:
         return jsonify({"error": "請輸入內容"}), 400
@@ -207,7 +258,7 @@ def _merge_llm(rule_out: dict, llm_res: dict) -> dict:
 @app.get("/api/records")
 @login_required
 def get_records():
-    return jsonify({"records": store.load_records(current_user_id())})
+    return jsonify({"records": store.load_records(current_ws())})
 
 
 @app.post("/api/records")
@@ -231,20 +282,20 @@ def add_records():
         })
     if not rows:
         return jsonify({"error": "沒有可儲存的品項"}), 400
-    n = store.add_records(current_user_id(), rows)
+    n = store.add_records(current_ws(), rows, created_by=current_user_id())
     return jsonify({"ok": True, "added": n})
 
 
 @app.delete("/api/records/<record_id>")
 @login_required
 def del_record(record_id):
-    return jsonify({"ok": store.delete_record(current_user_id(), record_id)})
+    return jsonify({"ok": store.delete_record(current_ws(), record_id)})
 
 
 @app.post("/api/records/clear")
 @login_required
 def clear_records():
-    store.clear_records(current_user_id())
+    store.clear_records(current_ws())
     return jsonify({"ok": True})
 
 
@@ -254,13 +305,13 @@ def clear_records():
 @app.get("/api/pivot")
 @login_required
 def api_pivot():
-    return jsonify(pivot.build_pivot(store.load_records(current_user_id())))
+    return jsonify(pivot.build_pivot(store.load_records(current_ws())))
 
 
 @app.get("/api/export/xlsx")
 @login_required
 def export_xlsx():
-    content = pivot.to_xlsx(store.load_records(current_user_id()))
+    content = pivot.to_xlsx(store.load_records(current_ws()))
     return send_file(
         io.BytesIO(content),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -272,7 +323,7 @@ def export_xlsx():
 @app.get("/api/export/csv")
 @login_required
 def export_csv():
-    content = pivot.to_csv(store.load_records(current_user_id()))
+    content = pivot.to_csv(store.load_records(current_ws()))
     return send_file(
         io.BytesIO(content.encode("utf-8")),
         mimetype="text/csv; charset=utf-8",
