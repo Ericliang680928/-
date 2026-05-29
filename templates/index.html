@@ -8,18 +8,30 @@
 </head>
 <body>
   <header>
-    <h1>🗣️ 口語化銷貨單系統</h1>
-    <p class="sub">用講的就能記帳 — 自動對應顧客與產品清單，整理成「產品 × 日期」統計表</p>
+    <div class="header-top">
+      <div>
+        <h1>🗣️ 口語化銷貨單系統</h1>
+        <p class="sub">用講的就能記帳 — 自動對應顧客與產品清單，整理成「產品 × 日期」統計表</p>
+      </div>
+      <div class="user-box">
+        <span id="userEmail">{{ user_email }}</span>
+        <button id="logoutBtn">登出</button>
+      </div>
+    </div>
   </header>
 
   <main>
     <!-- 1. 輸入 -->
     <section class="card">
       <h2>① 口語輸入</h2>
-      <textarea id="input" rows="2" placeholder="例如：今天王小明買了三箱可口可樂跟兩瓶礦泉水"></textarea>
+      <div class="input-wrap">
+        <textarea id="input" rows="2" placeholder="例如：今天王小明買了三箱可口可樂跟兩瓶礦泉水（也可以按 🎤 用講的）"></textarea>
+        <button id="micBtn" title="按住或點擊用語音輸入">🎤</button>
+      </div>
       <div class="row">
         <button id="parseBtn" class="primary">解析</button>
         <label class="muted"><input type="checkbox" id="useLlm" checked> 規則搞不定時用 AI 補強 <span id="llmTag"></span></label>
+        <span id="micHint" class="muted"></span>
       </div>
       <div class="examples muted">
         試試：

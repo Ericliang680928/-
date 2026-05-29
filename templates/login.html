@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登入 — 口語化銷貨單系統</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="auth-body">
+  <div class="auth-box">
+    <h1>🗣️ 口語化銷貨單系統</h1>
+    <p class="muted" id="authSub">登入後即可開始用口語登錄銷貨</p>
+
+    <div class="tabs">
+      <button class="tab active" data-mode="login">登入</button>
+      <button class="tab" data-mode="register">註冊新帳號</button>
+    </div>
+
+    <form id="authForm">
+      <label>Email
+        <input type="email" id="email" autocomplete="username" required placeholder="you@example.com">
+      </label>
+      <label>密碼
+        <input type="password" id="password" autocomplete="current-password" required placeholder="至少 6 碼">
+      </label>
+      <button type="submit" class="primary" id="submitBtn">登入</button>
+      <p class="err" id="err"></p>
+    </form>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script>
+    let mode = "login";
+    const $ = (s) => document.querySelector(s);
+    document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+      mode = t.dataset.mode;
+      document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+      $("#submitBtn").textContent = mode === "login" ? "登入" : "註冊並開始使用";
+      $("#authSub").textContent = mode === "login"
+        ? "登入後即可開始用口語登錄銷貨" : "註冊一個新帳號（你的資料只有你看得到）";
+      $("#err").textContent = "";
+    });
+
+    $("#authForm").onsubmit = async (e) => {
+      e.preventDefault();
+      $("#err").textContent = "";
+      const body = JSON.stringify({ email: $("#email").value, password: $("#password").value });
+      const url = mode === "login" ? "/api/auth/login" : "/api/auth/register";
+      try {
+        const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body });
+        const d = await r.json();
+        if (!r.ok) { $("#err").textContent = d.error || "失敗"; return; }
+        window.location = "/";
+      } catch (e) { $("#err").textContent = "連線失敗：" + e.message; }
+    };
+  </script>
+</body>
+</html>

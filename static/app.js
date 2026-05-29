@@ -6,6 +6,7 @@ let PRODUCTS = [];
 const $ = (s) => document.querySelector(s);
 const api = async (url, opts) => {
   const r = await fetch(url, opts);
+  if (r.status === 401) { window.location = "/login"; throw new Error("請先登入"); }
   if (!r.ok) {
     let msg = r.statusText;
     try { msg = (await r.json()).error || msg; } catch (e) {}
@@ -202,5 +203,57 @@ function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+
+// ---------- 登出 ----------
+$("#logoutBtn").onclick = async () => {
+  await fetch("/api/auth/logout", { method: "POST" });
+  window.location = "/login";
+};
+
+// ---------- 語音輸入（瀏覽器 Web Speech API，繁中）----------
+(function setupVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const micBtn = $("#micBtn");
+  const hint = $("#micHint");
+  if (!SR) {
+    micBtn.disabled = true;
+    micBtn.title = "此瀏覽器不支援語音輸入";
+    hint.textContent = "（此瀏覽器不支援語音，建議用 Chrome / Edge）";
+    return;
+  }
+  const rec = new SR();
+  rec.lang = "zh-TW";
+  rec.interimResults = true;
+  rec.continuous = false;
+  let listening = false;
+  let base = "";
+
+  rec.onresult = (e) => {
+    let txt = "";
+    for (let i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+    $("#input").value = (base + txt).trim();
+  };
+  rec.onerror = (e) => {
+    hint.textContent = e.error === "not-allowed"
+      ? "（麥克風權限被拒，請在瀏覽器允許）" : "（語音錯誤：" + e.error + "）";
+    stop();
+  };
+  rec.onend = () => { if (listening) stop(); };
+
+  function start() {
+    base = $("#input").value ? $("#input").value + " " : "";
+    listening = true;
+    micBtn.classList.add("recording");
+    hint.textContent = "🔴 聆聽中…講完會自動停止，或再按一次麥克風";
+    try { rec.start(); } catch (e) {}
+  }
+  function stop() {
+    listening = false;
+    micBtn.classList.remove("recording");
+    hint.textContent = "";
+    try { rec.stop(); } catch (e) {}
+  }
+  micBtn.onclick = () => (listening ? stop() : start());
+})();
 
 init().catch(e => toast("初始化失敗：" + e.message));

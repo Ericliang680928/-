@@ -1,56 +1,127 @@
-"""口語化銷貨單系統 — Flask 網頁後端。
+"""口語化銷貨單系統 — Flask 網頁後端（多帳號雲端版）。
 
-啟動：
-    python app.py
-    然後瀏覽器開 http://127.0.0.1:5000
-
-流程：輸入口語 → /api/parse 預覽（可手動修正）→ /api/records 確認存檔
-      → /api/pivot 看統計表 → /api/export 匯出 Excel / CSV
+啟動（本機）：
+    python app.py            → http://127.0.0.1:5000
+部署（正式）：
+    gunicorn app:app
 """
 
 from __future__ import annotations
 
-from datetime import date
-
-from flask import Flask, jsonify, request, send_file, render_template
 import io
+import os
+from datetime import date
+from functools import wraps
+
+from flask import (
+    Flask, jsonify, request, send_file, render_template,
+    session, redirect, url_for,
+)
 
 from sales import store, parser, pivot, llm
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "dev-insecure-change-me")
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    # 部署在 https 時設 SECURE=1，cookie 只走加密連線。
+    SESSION_COOKIE_SECURE=bool(os.environ.get("COOKIE_SECURE")),
+)
+
+
+# ---------------------------------------------------------------------------
+# 驗證
+# ---------------------------------------------------------------------------
+def login_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not session.get("user_id"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "請先登入", "auth": False}), 401
+            return redirect(url_for("login_page"))
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def current_user_id() -> int:
+    return session["user_id"]
+
+
+@app.get("/login")
+def login_page():
+    if session.get("user_id"):
+        return redirect(url_for("index"))
+    return render_template("login.html")
+
+
+@app.post("/api/auth/register")
+def register():
+    data = request.get_json(force=True)
+    email = (data.get("email") or "").strip()
+    pw = data.get("password") or ""
+    if "@" not in email or len(pw) < 6:
+        return jsonify({"error": "請輸入有效 email 與至少 6 碼密碼"}), 400
+    user_id = store.create_user(email, pw)
+    if not user_id:
+        return jsonify({"error": "此 email 已被註冊"}), 409
+    session["user_id"] = user_id
+    return jsonify({"ok": True, "email": email})
+
+
+@app.post("/api/auth/login")
+def do_login():
+    data = request.get_json(force=True)
+    user_id = store.verify_user(data.get("email", ""), data.get("password", ""))
+    if not user_id:
+        return jsonify({"error": "email 或密碼錯誤"}), 401
+    session["user_id"] = user_id
+    return jsonify({"ok": True})
+
+
+@app.post("/api/auth/logout")
+def logout():
+    session.clear()
+    return jsonify({"ok": True})
 
 
 @app.get("/")
+@login_required
 def index():
-    return render_template("index.html")
+    user = store.get_user(current_user_id())
+    return render_template("index.html", user_email=user["email"] if user else "")
 
 
 # ---------------------------------------------------------------------------
 # 清單管理
 # ---------------------------------------------------------------------------
 @app.get("/api/lists")
+@login_required
 def get_lists():
+    uid = current_user_id()
     return jsonify({
-        "customers": store.load_customers(),
-        "products": store.load_products(),
+        "customers": store.load_customers(uid),
+        "products": store.load_products(uid),
         "llm_available": llm.is_available(),
     })
 
 
 @app.post("/api/lists/customers")
+@login_required
 def set_customers():
     data = request.get_json(force=True)
     items = _parse_customer_text(data.get("text", "")) if "text" in data else data.get("items", [])
-    store.save_customers(items)
-    return jsonify({"customers": store.load_customers()})
+    store.save_customers(current_user_id(), items)
+    return jsonify({"customers": store.load_customers(current_user_id())})
 
 
 @app.post("/api/lists/products")
+@login_required
 def set_products():
     data = request.get_json(force=True)
     items = _parse_product_text(data.get("text", "")) if "text" in data else data.get("items", [])
-    store.save_products(items)
-    return jsonify({"products": store.load_products()})
+    store.save_products(current_user_id(), items)
+    return jsonify({"products": store.load_products(current_user_id())})
 
 
 def _parse_customer_text(text: str) -> list[dict]:
@@ -84,13 +155,15 @@ def _parse_product_text(text: str) -> list[dict]:
 # 解析（預覽，不存檔）
 # ---------------------------------------------------------------------------
 @app.post("/api/parse")
+@login_required
 def api_parse():
     data = request.get_json(force=True)
     text = (data.get("text") or "").strip()
     use_llm = data.get("use_llm", True)
     today = _today(data.get("today"))
-    customers = store.load_customers()
-    products = store.load_products()
+    uid = current_user_id()
+    customers = store.load_customers(uid)
+    products = store.load_products(uid)
 
     if not text:
         return jsonify({"error": "請輸入內容"}), 400
@@ -99,7 +172,6 @@ def api_parse():
     out = res.to_dict()
     out["source"] = "rule"
 
-    # 規則信心不足 → 嘗試 AI 補強
     if use_llm and res.needs_review and llm.is_available():
         llm_res = llm.parse(text, customers, products, today=today)
         if llm_res:
@@ -133,11 +205,13 @@ def _merge_llm(rule_out: dict, llm_res: dict) -> dict:
 # 銷貨紀錄
 # ---------------------------------------------------------------------------
 @app.get("/api/records")
+@login_required
 def get_records():
-    return jsonify({"records": store.load_records()})
+    return jsonify({"records": store.load_records(current_user_id())})
 
 
 @app.post("/api/records")
+@login_required
 def add_records():
     data = request.get_json(force=True)
     d = data.get("date") or date.today().isoformat()
@@ -157,18 +231,20 @@ def add_records():
         })
     if not rows:
         return jsonify({"error": "沒有可儲存的品項"}), 400
-    store.add_records(rows)
-    return jsonify({"ok": True, "added": len(rows)})
+    n = store.add_records(current_user_id(), rows)
+    return jsonify({"ok": True, "added": n})
 
 
 @app.delete("/api/records/<record_id>")
+@login_required
 def del_record(record_id):
-    return jsonify({"ok": store.delete_record(record_id)})
+    return jsonify({"ok": store.delete_record(current_user_id(), record_id)})
 
 
 @app.post("/api/records/clear")
+@login_required
 def clear_records():
-    store.clear_records()
+    store.clear_records(current_user_id())
     return jsonify({"ok": True})
 
 
@@ -176,13 +252,15 @@ def clear_records():
 # 統計 / 匯出
 # ---------------------------------------------------------------------------
 @app.get("/api/pivot")
+@login_required
 def api_pivot():
-    return jsonify(pivot.build_pivot(store.load_records()))
+    return jsonify(pivot.build_pivot(store.load_records(current_user_id())))
 
 
 @app.get("/api/export/xlsx")
+@login_required
 def export_xlsx():
-    content = pivot.to_xlsx(store.load_records())
+    content = pivot.to_xlsx(store.load_records(current_user_id()))
     return send_file(
         io.BytesIO(content),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -192,8 +270,9 @@ def export_xlsx():
 
 
 @app.get("/api/export/csv")
+@login_required
 def export_csv():
-    content = pivot.to_csv(store.load_records())
+    content = pivot.to_csv(store.load_records(current_user_id()))
     return send_file(
         io.BytesIO(content.encode("utf-8")),
         mimetype="text/csv; charset=utf-8",
@@ -212,6 +291,5 @@ def _today(value):
 
 
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", "5000"))
     app.run(host="0.0.0.0", port=port, debug=bool(os.environ.get("DEBUG")))

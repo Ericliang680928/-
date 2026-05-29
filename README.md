@@ -18,6 +18,8 @@
 
 ## 功能
 
+- **多帳號**：註冊/登入，每個帳號的清單與銷貨資料各自隔離，互看不到。
+- **語音輸入**：可按 🎤 直接用講的（瀏覽器 Web Speech API，繁中；Chrome / Edge 支援最佳）。
 - **口語輸入**：支援相對日期（今天/昨天/前天）、明確日期（5月20號、2026/05/20）、
   中文數字（三箱、一百二十）、阿拉伯數字、常見單位（箱/瓶/個/打…）。
 - **一句多筆**：「可樂50個、水12瓶」會拆成兩筆，並自動判斷「數量在前」或「產品在前」的語序。
@@ -34,15 +36,19 @@
 ```bash
 pip install -r requirements.txt   # anthropic 為選配
 python app.py
-# 開瀏覽器 http://127.0.0.1:5000
+# 開瀏覽器 http://127.0.0.1:5000 → 先「註冊新帳號」
 ```
+
+> 資料存在 SQLite（預設 `data/app.db`，可用環境變數 `SALES_DB` 覆寫）。
+> 設定 `SECRET_KEY` 環境變數可固定登入 session 的加密金鑰（正式環境務必設定）。
 
 ## 使用步驟
 
-1. **④ 清單設定**：貼上你的顧客與產品清單（產品請附編號）。
-2. **① 口語輸入**：打一句話 → 按「解析」。
-3. **② 確認與修正**：檢查日期/顧客/品項，需要時下拉修正 → 「確認存檔」。
-4. **③ 統計表**：即時看到產品 × 日期交叉表 → 「匯出 Excel / CSV」。
+1. **註冊 / 登入**：第一次使用先註冊；新帳號會自動帶一份範例清單。
+2. **④ 清單設定**：貼上你的顧客與產品清單（產品請附編號）。
+3. **① 口語輸入**：打一句話、或按 🎤 用講的 → 按「解析」。
+4. **② 確認與修正**：檢查日期/顧客/品項，需要時下拉修正 → 「確認存檔」。
+5. **③ 統計表**：即時看到產品 × 日期交叉表 → 「匯出 Excel / CSV」。
 
 ---
 
@@ -78,16 +84,26 @@ python app.py
 
 ## 分享給其他人 / 上線使用
 
-`python app.py` 預設只在你自己的電腦上跑（`127.0.0.1`）。要讓別人也能用，有幾種做法：
+系統已內建**多帳號登入**，可以安全地多人共用（每人資料隔離）。上線方式：
 
-- **同一區網**：用 `PORT=5000 python app.py` 啟動後（已綁定 `0.0.0.0`），
-  同網路的人連你的 `http://你的IP:5000` 即可。
-- **公開上線**：部署到雲端（Render / Railway / Fly.io / 一台有公開 IP 的主機），
-  正式環境請用 `gunicorn app:app` 之類的 WSGI 伺服器，不要用內建 debug 伺服器。
-- **快速臨時分享**：用 `ngrok http 5000` 把本機服務暫時開一個公開網址。
+### Render（最簡單，附設定檔）
 
-> 注意：目前資料存在伺服器本機檔案、且沒有帳號權限控管。若要多人正式共用，
-> 建議再加上登入驗證與資料庫，我可以再幫你擴充。
+本專案已附 `render.yaml`，到 [render.com](https://render.com) → New → **Blueprint** → 連這個 repo，
+它會自動：用 `gunicorn` 啟動、產生安全的 `SECRET_KEY`、掛一顆持久磁碟到 `/data`
+並把資料庫指向 `/data/app.db`（重新部署資料不流失）。完成後就有一個公開網址。
+
+### Railway / Fly.io 等
+
+附了 `Procfile`（`web: gunicorn app:app ...`），多數平台會自動辨識。記得：
+- 設環境變數 `SECRET_KEY`（隨機長字串）、`COOKIE_SECURE=1`（https）。
+- 把 `SALES_DB` 指向一個**持久磁碟**路徑，否則重啟會清空資料。
+
+### 其他
+
+- **同一區網**：`python app.py` 已綁 `0.0.0.0`，同網路的人連 `http://你的IP:5000`。
+- **臨時分享**：`ngrok http 5000` 開一個臨時公開網址。
+
+> 啟用 AI 補強：在平台後台設 `ANTHROPIC_API_KEY`（切勿寫進程式或設定檔）。
 
 ---
 
@@ -100,15 +116,19 @@ python tests/test_parser.py        # 或 python -m pytest -q
 ## 專案結構
 
 ```
-app.py                 Flask 後端與 API
+app.py                 Flask 後端、登入與 API
+Procfile / render.yaml 部署設定（gunicorn / Render）
 sales/
+  db.py                SQLite 連線與資料表結構
+  store.py             帳號、清單、銷貨紀錄（依 user_id 隔離）
   matcher.py           中文模糊比對
   parser.py            離線規則解析（日期/數量/產品配對）
   llm.py               選配的 Claude 解析補強（含 prompt caching）
-  store.py             清單與銷貨紀錄儲存
   pivot.py             產品×日期交叉表 + Excel/CSV 匯出
-templates/index.html   單頁網頁介面
+templates/
+  login.html           登入 / 註冊頁
+  index.html           主介面（含語音輸入）
 static/                前端 JS / CSS
-data/                  顧客、產品清單（範例）
+data/                  清單格式範例 CSV；執行時的 app.db 不進版控
 tests/                 測試
 ```

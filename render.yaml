@@ -1,0 +1,27 @@
+# Render 一鍵部署設定。
+# 用法：把這個 repo 連到 Render，選 "Blueprint"，它會讀這支檔案自動建立服務。
+# 重點：掛一顆 1GB 持久磁碟到 /data，並把 SQLite 資料庫指向它，重新部署資料才不會消失。
+services:
+  - type: web
+    name: sales-invoice
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    healthCheckPath: /login
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true        # 由 Render 自動產生一組安全金鑰
+      - key: SALES_DB
+        value: /data/app.db        # 資料庫放在持久磁碟
+      - key: COOKIE_SECURE
+        value: "1"                 # Render 走 https，cookie 只走加密連線
+      - key: PYTHON_VERSION
+        value: "3.11"
+      # 選配：要啟用 AI 補強就在 Render 後台填入金鑰（不要寫死在這裡）
+      # - key: ANTHROPIC_API_KEY
+      #   sync: false
+    disk:
+      name: sales-data
+      mountPath: /data
+      sizeGB: 1
