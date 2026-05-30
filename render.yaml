@@ -1,0 +1,55 @@
+# Render 一鍵部署設定（免費方案可跑）。
+# 用法：把這個 repo 連到 Render，選 "Blueprint"，它會讀這支檔案自動建立兩個服務。
+#
+# 資料永久保存：免費方案沒有持久磁碟，所以改用「外部 Postgres」(建議 Neon 免費方案)。
+#   1) 到 neon.tech 建一個免費專案。
+#   2) 兩個 App 各需「自己的資料庫」(它們都有 users/products 等同名表，不能共用同一個 DB)。
+#      在 Neon SQL 編輯器執行：CREATE DATABASE sales;  CREATE DATABASE stocktake;
+#   3) 取得兩條連線字串(只差結尾資料庫名)，分別貼到兩個服務的 DATABASE_URL：
+#        sales-invoice → .../sales        stocktake → .../stocktake
+#   未設定 DATABASE_URL 時會退回 SQLite，但免費方案重啟即清空，僅適合臨時展示。
+services:
+  - type: web
+    name: sales-invoice
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    healthCheckPath: /login
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true        # 由 Render 自動產生一組安全金鑰
+      - key: COOKIE_SECURE
+        value: "1"                 # Render 走 https，cookie 只走加密連線
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: DATABASE_URL
+        sync: false                # 在 Render 後台貼上 Neon 連線字串
+      # 選配：要啟用 AI 補強就在 Render 後台填入金鑰（不要寫死在這裡）
+      # - key: ANTHROPIC_API_KEY
+      #   sync: false
+
+  # 第二個 App：庫存盤點系統
+  - type: web
+    name: stocktake
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn run_stocktake:app --bind 0.0.0.0:$PORT --workers 2 --timeout 60
+    healthCheckPath: /login
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true        # 由 Render 自動產生一組安全金鑰
+      - key: COOKIE_SECURE
+        value: "1"                 # Render 走 https，cookie 只走加密連線
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: DATABASE_URL
+        sync: false                # 在 Render 後台貼上 Neon 連線字串
+      - key: SOURCE_SHEET_ID
+        value: 1JOpCUfAS3YEHHGUq_NR8twxGzDh7C0_p7bZAdOc0tf0
+      - key: DEDICATED_SHEET_ID
+        value: 1-t5dPhduceaVwVk3vtoestXPOKR6_yk9xHKCtiS-Ipc
+      # 服務帳號 JSON：在 Render 後台貼上金鑰內容（切勿寫死在這裡或進版控）
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false

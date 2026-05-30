@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登入 — 庫存盤點系統</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="auth">
+    <div class="box">
+      <h1>📦 庫存盤點系統</h1>
+      {% if first_user %}
+        <p class="muted">尚無任何帳號，請建立第一位<b>管理員</b>。</p>
+      {% else %}
+        <p class="muted">請登入。新帳號由管理員建立。</p>
+      {% endif %}
+      <form id="f">
+        {% if first_user %}
+        <div class="field"><label>姓名</label><input id="name" placeholder="你的名字"></div>
+        {% endif %}
+        <div class="field"><label>Email</label><input id="email" type="email" autocomplete="username" required></div>
+        <div class="field"><label>密碼</label><input id="pw" type="password" autocomplete="current-password" required placeholder="{% if first_user %}至少 6 碼{% endif %}"></div>
+        <button class="primary big" id="btn">{% if first_user %}建立管理員並登入{% else %}登入{% endif %}</button>
+        <p class="err" id="err"></p>
+      </form>
+    </div>
+  </div>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script>
+    const first = {{ 'true' if first_user else 'false' }};
+    $("#f").onsubmit = async (e) => {
+      e.preventDefault(); $("#err").textContent = "";
+      const body = { email: $("#email").value, password: $("#pw").value };
+      if (first) body.name = $("#name").value;
+      try {
+        await post(first ? "/api/auth/register" : "/api/auth/login", body);
+        window.location = "/";
+      } catch (err) { $("#err").textContent = err.message; }
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block htitle %} · 建立批次{% endblock %}
+{% block nav_new %}active{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>建立盤點批次</h2>
+  <form id="f">
+    <div class="field">
+      <label>盤點日期（必填）</label>
+      <input id="count_date" type="date" value="{{ today }}" required>
+    </div>
+    <div class="field">
+      <label>批次名稱（選填）</label>
+      <input id="title" placeholder="例如：5月底全店盤點">
+    </div>
+    <div class="field">
+      <label>盤點範圍</label>
+      <select id="category">
+        <option value="">全部啟用產品（{{ product_count }} 項）</option>
+        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+      <p class="muted">建立時會依目前產品與帳面庫存產生盤點明細快照。</p>
+    </div>
+    <button class="primary big" id="btn">建立並開始盤點</button>
+    <p class="err" id="err"></p>
+  </form>
+</div>
+{% endblock %}
+{% block script %}
+<script>
+$("#f").onsubmit = async (e) => {
+  e.preventDefault(); $("#err").textContent = ""; $("#btn").disabled = true;
+  try {
+    const r = await post("/api/batches", {
+      count_date: $("#count_date").value, title: $("#title").value, category: $("#category").value,
+    });
+    window.location = `/batches/${r.batch_id}/count`;
+  } catch (err) { $("#err").textContent = err.message; $("#btn").disabled = false; }
+};
+</script>
+{% endblock %}

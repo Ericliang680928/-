@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block htitle %} · 覆核{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:10px">
+  <div class="row spread">
+    <div><b>{{ batch.title or batch.id }}</b><span class="badge b-{{ batch.status }}" style="margin-left:6px">{{ batch.status }}</span></div>
+    <a href="/batches/{{ batch.id }}/count"><button>← 回盤點</button></a>
+  </div>
+  <div class="muted">盤點日期 {{ batch.count_date }} · 共 {{ batch.total }} 項，差異 {{ batch.counts['差異'] }}，已覆核 {{ batch.counts['已覆核'] }}</div>
+</div>
+
+<div class="card">
+  <div class="row spread">
+    <h2 style="margin:0">差異清單</h2>
+    <label class="muted" style="margin:0"><input type="checkbox" id="showAll" style="width:auto;display:inline"> 顯示全部</label>
+  </div>
+  <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap;align-items:center">
+    <label class="muted" style="margin:0">範圍
+      <select id="scope" style="width:auto;display:inline"><option value="diff">僅差異</option><option value="all">全部已盤</option></select>
+    </label>
+    <label class="muted" style="margin:0">排序
+      <select id="sort" style="width:auto;display:inline"><option value="category">依類別</option><option value="diff">依差異大小</option></select>
+    </label>
+    <button id="xlsxBtn">⬇️ 匯出 Excel</button>
+    <button id="csvBtn">⬇️ 匯出 CSV</button>
+  </div>
+  <div id="list" style="margin-top:10px"></div>
+
+  {% if batch.status == '進行中' and me.role in ['admin','reviewer'] %}
+  <div class="row" style="margin-top:12px">
+    <button class="primary" id="reviewBtn">把勾選的標記為已覆核</button>
+    <button class="ok" id="closeBtn">結案此批次</button>
+  </div>
+  {% endif %}
+  {% if batch.status == '進行中' and me.role == 'admin' %}
+  <button class="danger" id="voidBtn" style="margin-top:10px">作廢此批次</button>
+  {% endif %}
+</div>
+
+{% if batch.status == '已結案' %}
+<div class="card">
+  <h2>調整紀錄（結案後唯一可改的方式）</h2>
+  {% if me.role in ['admin','reviewer'] %}
+  <div class="grid2">
+    <div class="field"><label>商品編號</label><input id="adjCode" placeholder="輸入或貼上編號"></div>
+    <div class="field"><label>調整後實盤數</label><input id="adjQty" type="number" step="any"></div>
+  </div>
+  <div class="field"><label>原因</label><input id="adjReason" placeholder="例如：覆核後重數、單位換算更正"></div>
+  <button class="primary" id="adjBtn">新增調整紀錄</button>
+  <p class="err" id="adjErr"></p>
+  {% endif %}
+  <table style="margin-top:12px"><thead><tr><th>時間</th><th>商品編號</th><th>原數</th><th>調整後</th><th>原因</th><th>調整人</th></tr></thead>
+  <tbody id="adjList"></tbody></table>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block script %}
+<script>
+const BID="{{ batch.id }}";
+const CLOSED="{{ batch.status }}"==="已結案";
+let ITEMS=[], showAll=false;
+
+function render(){
+  const rows=ITEMS.filter(it=> showAll ? true : (it.status==='差異'));
+  $("#list").innerHTML = rows.length ? rows.map(it=>{
+    const n=Number(it.diff_qty||0); const cls=n>0?'pos':(n<0?'neg':'zero');
+    const canCheck = !CLOSED && it.actual_qty!==null && it.status!=='已覆核';
+    return `<div class="item s-${it.status}">
+      <div class="row spread"><span class="nm">${esc(it.name_snapshot)}</span><span class="badge b-${it.status}">${it.status}</span></div>
+      <div class="code">${esc(it.product_code)}${it.spec_snapshot?(' · '+esc(it.spec_snapshot)):''}</div>
+      <div class="row" style="margin-top:6px;gap:14px">
+        <span class="muted">帳面 <b>${it.book_qty_snapshot}</b></span>
+        <span class="muted">實盤 <b>${it.actual_qty===null?'—':it.actual_qty}</b></span>
+        <span class="diff ${cls}">差異 ${n>0?'+':''}${it.diff_qty===null?'—':n}</span>
+        ${canCheck?`<label class="muted" style="margin:0"><input type="checkbox" class="chk" value="${esc(it.product_code)}" style="width:auto;display:inline"> 覆核</label>`:''}
+      </div>
+      ${it.diff_reason?`<div class="muted">原因：${esc(it.diff_reason)}</div>`:''}
+      ${it.reviewer?`<div class="muted">✓ ${esc(it.reviewer)} 覆核於 ${esc(it.reviewed_at)}</div>`:''}
+    </div>`;}).join("") : `<p class="muted">沒有${showAll?'':'差異'}品項。</p>`;
+}
+async function load(){const r=await api(`/api/batches/${BID}/items`);ITEMS=r.items;render();
+  if(CLOSED) loadAdj();}
+$("#showAll")?.addEventListener("change",e=>{showAll=e.target.checked;render();});
+
+function exportReport(fmt){
+  const scope=$("#scope").value, sort=$("#sort").value;
+  window.location=`/api/batches/${BID}/report.${fmt}?scope=${scope}&sort=${sort}`;
+}
+$("#xlsxBtn")?.addEventListener("click",()=>exportReport("xlsx"));
+$("#csvBtn")?.addEventListener("click",()=>exportReport("csv"));
+
+$("#reviewBtn")?.addEventListener("click",async()=>{
+  const codes=$$(".chk:checked").map(c=>c.value);
+  if(!codes.length) return toast("請先勾選要覆核的品項");
+  const r=await post(`/api/batches/${BID}/review`,{product_codes:codes});
+  toast(`已覆核 ${r.reviewed} 項`); load();
+});
+$("#closeBtn")?.addEventListener("click",async()=>{
+  if(!confirm("結案後盤點明細將凍結、不可修改（只能新增調整紀錄）。確定結案？")) return;
+  try{const r=await post(`/api/batches/${BID}/close`,{});
+    toast(`已結案，套用 ${r.applied} 項到庫存${r.uncounted?`（仍有 ${r.uncounted} 項未盤）`:''}`);
+    setTimeout(()=>location.reload(),900);
+  }catch(e){toast(e.message);}
+});
+$("#voidBtn")?.addEventListener("click",async()=>{
+  if(!confirm("確定作廢此批次？")) return;
+  try{await post(`/api/batches/${BID}/void`,{});location.reload();}catch(e){toast(e.message);}
+});
+
+async function loadAdj(){
+  const r=await api(`/api/batches/${BID}`);
+  $("#adjList").innerHTML=(r.adjustments||[]).map(a=>`<tr>
+    <td>${esc(a.created_at)}</td><td>${esc(a.product_code)}</td><td>${a.old_actual??'—'}</td>
+    <td>${a.new_actual}</td><td>${esc(a.reason||'')}</td><td>${esc(a.created_by)}</td></tr>`).join("");
+}
+$("#adjBtn")?.addEventListener("click",async()=>{
+  $("#adjErr").textContent="";
+  try{
+    await post(`/api/batches/${BID}/adjust`,{product_code:$("#adjCode").value.trim(),
+      new_actual:$("#adjQty").value,reason:$("#adjReason").value});
+    $("#adjCode").value="";$("#adjQty").value="";$("#adjReason").value="";
+    toast("已新增調整紀錄");loadAdj();
+  }catch(e){$("#adjErr").textContent=e.message;}
+});
+load();
+</script>
+{% endblock %}
