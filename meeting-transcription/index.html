@@ -141,6 +141,14 @@
           <button id="clearBtn" class="btn btn--ghost btn--sm">清空</button>
         </div>
 
+        <div class="upload">
+          <label class="upload__btn">
+            📁 上傳音檔轉錄
+            <input id="audioFile" type="file" accept="audio/*,.m4a,.mp3,.wav,.webm,.mp4,.ogg" hidden />
+          </label>
+          <span id="uploadHint" class="upload__hint">支援 mp3／m4a／wav 等（需後端，見 README）</span>
+        </div>
+
         <label class="field-label" for="transcript">逐字稿（可編輯）</label>
         <textarea id="transcript" class="transcript" placeholder="這裡會即時顯示辨識到的文字，你也可以直接編輯或貼上會議文字…"></textarea>
         <div id="interim" class="interim"></div>

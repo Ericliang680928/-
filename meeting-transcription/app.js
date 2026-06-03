@@ -19,7 +19,7 @@
         summaryBtn = $('summaryBtn'), summaryList = $('summaryList'), todoList = $('todoList'),
         exportWord = $('exportWord'), exportTxt = $('exportTxt'), saveBtn = $('saveBtn'),
         search = $('search'), historyList = $('historyList'), apiKey = $('apiKey'),
-        unsupported = $('unsupported');
+        unsupported = $('unsupported'), audioFile = $('audioFile'), uploadHint = $('uploadHint');
 
   // ---- 語音辨識初始化 ----
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -102,6 +102,44 @@
     status.textContent = '尚未開始';
     summaryList.innerHTML = '<li class="muted">尚未產生摘要</li>';
     todoList.innerHTML = '<li class="muted">尚未產生待辦</li>';
+  });
+
+  // ---- 上傳音檔轉錄（選配後端 server.py） ----
+  const LANG_TO_ISO = { 'zh-TW': 'zh', 'zh-CN': 'zh', 'en-US': 'en', 'ja-JP': 'ja' };
+
+  audioFile.addEventListener('change', async () => {
+    const file = audioFile.files[0];
+    if (!file) return;
+    const uploadBtn = audioFile.closest('.upload__btn');
+    uploadBtn.classList.add('is-busy');
+    uploadHint.textContent = `⏳ 上傳並轉錄中：${file.name}（檔案越長越久，請稍候）`;
+
+    const fd = new FormData();
+    fd.append('audio', file);
+    fd.append('language', LANG_TO_ISO[langSel.value] || '');
+
+    try {
+      const res = await fetch('/api/transcribe', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const text = (data.text || '').trim();
+      if (text) {
+        const sep = transcript.value && !transcript.value.endsWith('\n') ? '\n' : '';
+        transcript.value += `${sep}[音檔：${file.name}] ${text}\n`;
+        transcript.scrollTop = transcript.scrollHeight;
+        uploadHint.textContent = `✅ 已轉錄並附加到逐字稿：${file.name}`;
+      } else {
+        uploadHint.textContent = '⚠️ 轉錄結果為空，請確認音檔內容';
+      }
+    } catch (err) {
+      const noServer = err instanceof TypeError; // fetch 失敗 → 多半沒啟動後端
+      uploadHint.textContent = noServer
+        ? '⚠️ 找不到後端服務。請依 README 啟動 server.py 後再上傳音檔。'
+        : '⚠️ 轉錄失敗：' + err.message;
+    } finally {
+      uploadBtn.classList.remove('is-busy');
+      audioFile.value = '';
+    }
   });
 
   // ---- 摘要與待辦：內建規則 ----
