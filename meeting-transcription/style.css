@@ -175,6 +175,8 @@ h1,h2,h3,h4{line-height:1.25;letter-spacing:.01em}
 .plan ul{list-style:none;text-align:left;display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
 .plan li{padding-left:26px;position:relative;color:var(--ink-soft);font-size:15px}
 .plan li::before{content:"✓";position:absolute;left:0;color:var(--ok);font-weight:800}
+.plan__foot{font-size:13px;color:var(--ink-soft);margin:-6px 0 18px;text-align:left}
+.plan__price span{display:block;font-size:14px;font-weight:500;color:var(--ink-soft);margin-top:2px}
 
 /* ===== 頁尾 ===== */
 .footer{background:var(--ink);color:#fff;padding:28px 0}
