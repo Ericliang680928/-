@@ -1,16 +1,13 @@
 """SQLite ↔ PostgreSQL 相容層（讓兩個 App 一套程式碼跑兩種資料庫）。
 
 * 本機開發與測試：用 SQLite（零設定、免安裝伺服器）。
-* 雲端部署：設了環境變數 `DATABASE_URL`（如 Neon 免費 Postgres）就改用 Postgres，
+* 雲端部署：設了 `DATABASE_URL` 就改用 Postgres（如 Supabase）；
+  設了 `DB_SCHEMA` 就把所有表放進那個 schema（多 App 共用同一個 Postgres 實例）。
   資料才會跨重啟/重新部署永久保存，並更適合多人同時寫入。
 
-設計重點：
-  * 兩種後端都讓 `conn.execute(sql, params)` 回傳「可用 row["欄名"] 取值」的列。
-  * SQL 一律用 `?` 佔位符；Postgres 後端會自動轉成 `%s`。
-  * 建表 DDL 一律用 SQLite 寫法；Postgres 後端會把
-    `INTEGER PRIMARY KEY AUTOINCREMENT` 轉成 `SERIAL PRIMARY KEY`。
-  * 自增主鍵：取得新 id 請用 `lastid(conn, cur)`（兩種後端皆可）。
-  * 結構遷移（PRAGMA/sqlite_master 等）只在 SQLite 上跑；Postgres 永遠是全新建立。
+環境變數：
+  DATABASE_URL   postgresql://user:pass@host:port/dbname   （不設 → 用 SQLite）
+  DB_SCHEMA      salesapp | stocktake                      （不設 → 用 public schema）
 """
 
 from __future__ import annotations
@@ -19,7 +16,8 @@ import os
 import re
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
-IS_PG = DATABASE_URL.startswith(("postgres://", "postgresql://"))
+DB_SCHEMA    = os.environ.get("DB_SCHEMA", "").strip()
+IS_PG        = DATABASE_URL.startswith(("postgres://", "postgresql://"))
 
 _AUTOINC = re.compile(r"INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT", re.IGNORECASE)
 
@@ -41,6 +39,11 @@ class _PgCursor:
     def fetchall(self):
         return self._cur.fetchall()
 
+    @property
+    def lastrowid(self):
+        # 僅作防呆；正常情況請用 lastid() helper
+        return None
+
     def __iter__(self):
         return iter(self._cur.fetchall())
 
@@ -57,8 +60,12 @@ class _PgConn:
         return _PgCursor(cur)
 
     def executescript(self, sql: str):
+        """逐條執行；Postgres 不支援 SQLite 的 executescript，拆開更可靠。"""
         cur = self._conn.cursor()
-        cur.execute(_to_pg_ddl(sql))
+        for stmt in _to_pg_ddl(sql).split(";"):
+            stmt = stmt.strip()
+            if stmt:
+                cur.execute(stmt)
         return _PgCursor(cur)
 
     def commit(self):
@@ -78,14 +85,18 @@ def connect(sqlite_path: str):
         import psycopg2.extras
 
         url = DATABASE_URL
-        if url.startswith("postgres://"):  # SQLAlchemy/psycopg2 慣用 postgresql://
+        if url.startswith("postgres://"):
             url = "postgresql://" + url[len("postgres://"):]
-        conn = psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+
+        # 用 options 在協定層設定 search_path，相容 pgBouncer / Supavisor 各種模式
+        opts = f"-c search_path={DB_SCHEMA}" if DB_SCHEMA else ""
+        conn = psycopg2.connect(url, options=opts,
+                                cursor_factory=psycopg2.extras.RealDictCursor)
         return _PgConn(conn)
 
     import sqlite3
 
-    if os.path.dirname(sqlite_path):
+    if sqlite_path and os.path.dirname(sqlite_path):
         os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
     conn = sqlite3.connect(sqlite_path, timeout=15)
     conn.row_factory = sqlite3.Row

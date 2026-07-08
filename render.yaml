@@ -1,13 +1,15 @@
 # Render 一鍵部署設定（免費方案可跑）。
-# 用法：把這個 repo 連到 Render，選 "Blueprint"，它會讀這支檔案自動建立兩個服務。
+# 用法：把這個 repo 連到 Render → New → Blueprint → 選這個 repo → 填入 DATABASE_URL。
 #
-# 資料永久保存：免費方案沒有持久磁碟，所以改用「外部 Postgres」(建議 Neon 免費方案)。
-#   1) 到 neon.tech 建一個免費專案。
-#   2) 兩個 App 各需「自己的資料庫」(它們都有 users/products 等同名表，不能共用同一個 DB)。
-#      在 Neon SQL 編輯器執行：CREATE DATABASE sales;  CREATE DATABASE stocktake;
-#   3) 取得兩條連線字串(只差結尾資料庫名)，分別貼到兩個服務的 DATABASE_URL：
-#        sales-invoice → .../sales        stocktake → .../stocktake
-#   未設定 DATABASE_URL 時會退回 SQLite，但免費方案重啟即清空，僅適合臨時展示。
+# 資料永久保存：兩個 App 共用同一個 Supabase 免費 Postgres 專案，
+# 以不同 schema 隔離（salesapp / stocktake）。
+#
+# 你只需要：
+#   1. 到 Supabase Dashboard → 專案 kxgbnrbedmmgfxuevuzq → Settings → Database
+#      → Connection string → Pooling → "Transaction" 模式 → 複製 URI。
+#      （格式：postgresql://postgres.[ref]:[密碼]@...pooler.supabase.com:6543/postgres）
+#   2. 把同一條 URI 分別貼到下方兩個服務的 DATABASE_URL（URI 一模一樣，DB_SCHEMA 不同）。
+#   3. 部署，完成。
 services:
   - type: web
     name: sales-invoice
@@ -18,18 +20,18 @@ services:
     healthCheckPath: /login
     envVars:
       - key: SECRET_KEY
-        generateValue: true        # 由 Render 自動產生一組安全金鑰
+        generateValue: true
       - key: COOKIE_SECURE
-        value: "1"                 # Render 走 https，cookie 只走加密連線
+        value: "1"
       - key: PYTHON_VERSION
         value: "3.11"
+      - key: DB_SCHEMA
+        value: salesapp            # 對應 Supabase 已建好的 salesapp schema
       - key: DATABASE_URL
-        sync: false                # 在 Render 後台貼上 Neon 連線字串
-      # 選配：要啟用 AI 補強就在 Render 後台填入金鑰（不要寫死在這裡）
+        sync: false                # ← 在 Render 後台貼上 Supabase 連線字串
       # - key: ANTHROPIC_API_KEY
       #   sync: false
 
-  # 第二個 App：庫存盤點系統
   - type: web
     name: stocktake
     runtime: python
@@ -39,17 +41,18 @@ services:
     healthCheckPath: /login
     envVars:
       - key: SECRET_KEY
-        generateValue: true        # 由 Render 自動產生一組安全金鑰
+        generateValue: true
       - key: COOKIE_SECURE
-        value: "1"                 # Render 走 https，cookie 只走加密連線
+        value: "1"
       - key: PYTHON_VERSION
         value: "3.11"
+      - key: DB_SCHEMA
+        value: stocktake           # 對應 Supabase 已建好的 stocktake schema
       - key: DATABASE_URL
-        sync: false                # 在 Render 後台貼上 Neon 連線字串
+        sync: false                # ← 在 Render 後台貼上同一條 Supabase 連線字串
       - key: SOURCE_SHEET_ID
         value: 1JOpCUfAS3YEHHGUq_NR8twxGzDh7C0_p7bZAdOc0tf0
       - key: DEDICATED_SHEET_ID
         value: 1-t5dPhduceaVwVk3vtoestXPOKR6_yk9xHKCtiS-Ipc
-      # 服務帳號 JSON：在 Render 後台貼上金鑰內容（切勿寫死在這裡或進版控）
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
         sync: false
